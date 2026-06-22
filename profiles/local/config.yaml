@@ -1,0 +1,39 @@
+# ==============================================================================
+# Local Execution Profile
+# ==============================================================================
+# For pure local multi-core execution (no SLURM / cluster scheduler).
+# Usage: snakemake --profile profiles/local
+# ==============================================================================
+
+# Use local executor (no cluster submission)
+executor: local
+
+# Default core count (from config.yaml)
+cores: 8
+
+# Print shell commands to log
+printshellcmds: true
+
+# Conda environments
+# Each rule auto-detects and activates its env in the shell block
+# (reuses if exists, creates from lock file if missing).
+# conda: directives are kept as declaration / documentation.
+# Set to true for Snakemake-native conda management.
+use-conda: false
+
+# NFS filesystem latency tolerance
+latency-wait: 60
+
+# Do not retry failed jobs
+restart-times: 0
+
+# Stop on first error (do not keep going)
+keep-going: false
+
+# Rerun triggers
+rerun-triggers:
+  - mtime
+  - params
+  - input
+  - software-env
+  - code

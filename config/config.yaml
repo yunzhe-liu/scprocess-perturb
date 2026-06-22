@@ -1,0 +1,56 @@
+proj_dir: /home/yunzliu/guide_extraction
+out_dir: /data/yunzliu/results/guide_extraction/hash_matcher_v3
+log_dir: /data/yunzliu/logs/guide_extraction/hash_matcher_v3
+work_dir: /data/yunzliu/tmp/guide_extraction_v3
+
+# ---- Guide extraction method ----
+#   simpleaf     — piscem k-mer pseudoalignment + alevin-fry (legacy, default)
+#   hash_matcher — window-restricted hash lookup with Hamming tolerance (v3: int encoding + numpy + multi-process)
+guide_extraction:
+  method: hash_matcher
+
+references:
+  guide_csv: /data/yunzliu/references/raw_guides_k562_essential.csv
+  guide_fasta: /data/yunzliu/references/guides.fasta
+  guide_hash: /data/yunzliu/references/guide_hash_v3.pkl
+  guide_t2g_2col: /data/yunzliu/references/t2g_2col_guide.tsv
+  sgRNA_index_dir: /data/yunzliu/simpleaf_index_k13
+
+# ---- simpleaf parameters (used when method=simpleaf) ----
+simpleaf:
+  conda_env: simpleaf
+  bin_dir: /home/yunzliu/software/miniconda3/envs/simpleaf/bin
+  af_home: /home/yunzliu/software/miniconda3/envs/simpleaf/opt/alevin-fry
+  index:
+    kmer_length: 13
+    minimizer_length: 9
+  quant:
+    chemistry: 10xv3
+    resolution: parsimony-gene
+
+# ---- Hash matcher parameters (used when method=hash_matcher) ----
+hash_matcher:
+  window_start: 28
+  window_end: 54
+  guide_length: 20
+  cb_prefix_len: 6       # prefix length for L2 bucket indexing (v2)
+  umi_threshold: 1
+
+preprocess:
+  trimmed: false
+whitelist:
+  min_umi: 1000
+  min_genes: 500
+resources:
+  default_threads: 8
+  simpleaf_index_threads: 4
+  simpleaf_quant_threads: 4
+  hash_quant_threads: 4
+snakemake:
+  latency_wait: 60
+  rerun_triggers:
+  - mtime
+  - params
+  - input
+  - software-env
+  - code
