@@ -3,6 +3,10 @@ out_dir: /data/yunzliu/results/guide_extraction/hash_matcher_final
 log_dir: /data/yunzliu/logs/guide_extraction/hash_matcher_final
 work_dir: /data/yunzliu/tmp/guide_extraction_final
 
+# v0.1.2: Single entry for chemistry — all downstream parameters are derived
+# automatically from config/chemistry_spec.yaml.
+tenx_chemistry: "3v3"
+
 # ---- Guide extraction method ----
 #   simpleaf     — piscem k-mer pseudoalignment + alevin-fry (legacy, default)
 #   hash_matcher — window-restricted hash lookup with Hamming tolerance (v3: int encoding + numpy + multi-process)
@@ -25,8 +29,8 @@ simpleaf:
     kmer_length: 13
     minimizer_length: 9
   quant:
-    chemistry: 10xv3
     resolution: parsimony-gene
+    # chemistry is auto-derived from tenx_chemistry above
 
 # ---- Hash matcher parameters (used when method=hash_matcher) ----
 hash_matcher:

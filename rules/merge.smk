@@ -27,6 +27,9 @@ rule merge_matrices:
         result_dir  = config["out_dir"],
         quant_subdir = QUANT_OUT_SUBDIR,
         quant_mtx    = QUANT_MTX_FILE,
+        # v0.1.2: prefer _chemistry.translation; fall back to legacy skip_translation
+        skip_trans  = "true" if not (config.get("_chemistry") or {}).get("translation", not config.get("skip_translation", False)) else "false",
+        trans_table = config.get("translation_table", "/data/yunzliu/scdata/cellranger_ref/cellranger_whitelist_translation_3v3.txt"),
     log:
         os.path.join(config["log_dir"], "merge", "merge.log"),
     threads: 1
@@ -62,12 +65,15 @@ print('Lane list written: ' + str(len(groups)) + ' lanes')
             --out "{params.out_dir}" \
             --prefix "{params.prefix}"
 
-        # Post-merge: translate sequencer format → 3v3 whitelist standard.
-        # Cell Ranger internally applies this FROM→TO translation; since we
-        # bypass Cell Ranger, we apply it here so output matches published data.
-        echo "Translating barcodes (sequencer format → 3v3 whitelist)..."
-        python3 "{config[proj_dir]}/scripts/translate_barcodes.py" \
-            "{params.out_dir}/{params.prefix}_barcodes.tsv.gz" \
-            --trans-table /data/yunzliu/scdata/cellranger_ref/cellranger_whitelist_translation_3v3.txt \
-            --direction from_to
+        # Post-merge: barcode translation (Nextera→TruSeq for 3' v3 chemistry).
+        # Skipped for 5' v1 (TruSeq-only) and single-lane datasets.
+        if [ "{params.skip_trans}" = "true" ]; then
+            echo "Barcode translation skipped (config: skip_translation=true)."
+        else
+            echo "Translating barcodes (sequencer format → whitelist)..."
+            python3 "{config[proj_dir]}/scripts/translate_barcodes.py" \
+                "{params.out_dir}/{params.prefix}_barcodes.tsv.gz" \
+                --trans-table "{params.trans_table}" \
+                --direction from_to
+        fi
     """

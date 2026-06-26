@@ -1,0 +1,48 @@
+# ──────────────────────────────────────────────────────────────────────
+# sgprocess config — Papalexi 2021, THP-1 ECCITE-seq, 10x 5' v1
+# ──────────────────────────────────────────────────────────────────────
+out_dir: /data/yunzliu/results/guide_extraction/papalexi_2021/ham
+log_dir: /data/yunzliu/logs/guide_extraction/papalexi_2021/ham
+proj_dir: /home/yunzliu/sgprocess
+
+# v0.1.2: Single entry for chemistry — all downstream parameters (simpleaf
+# chemistry, whitelist, translation, HAM chemistry, UMI length) are derived
+# automatically from config/chemistry_spec.yaml.
+tenx_chemistry: "5v1"
+
+guide_extraction:
+  method: hash_matcher
+
+simpleaf:
+  af_home: /home/yunzliu/software/miniconda3/envs/simpleaf
+  index:
+    kmer_length: 15
+    minimizer_length: 11
+  quant:
+    resolution: parsimony-gene
+    use_knee: false
+    # chemistry is auto-derived from tenx_chemistry above
+
+hash_matcher:
+  umi_threshold: 1
+  cb_max_hamming: 1
+  # chemistry is auto-derived from tenx_chemistry above
+
+whitelist:
+  min_umi: 1000
+  min_genes: 500
+
+references:
+  guide_csv: /data/yunzliu/papalexi_2021_benchmark/01_reference/papalexi_2021_t2g.tsv
+  guide_fasta: /data/yunzliu/papalexi_2021_benchmark/01_reference/papalexi_2021_guides.fasta
+  guide_t2g_2col: /data/yunzliu/papalexi_2021_benchmark/01_reference/papalexi_2021_t2g_guide_level.tsv
+  guide_hash: /data/yunzliu/papalexi_2021_benchmark/ham_guide_hash.pkl
+  sgRNA_index_dir: /data/yunzliu/papalexi_2021_benchmark/papalexi_index_k15
+  whitelist_dir: /data/yunzliu/scdata/whitelists
+
+# translation is auto-derived from tenx_chemistry (5v1: no dual-oligo system)
+
+resources:
+  simpleaf_quant_threads: 12
+  simpleaf_index_threads: 4
+  hash_quant_threads: 4

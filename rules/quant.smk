@@ -45,7 +45,10 @@ rule simpleaf_quant:
     params:
         out_dir    = os.path.join(config["out_dir"], "{group}", "simpleaf_quant"),
         index_dir  = config["references"]["sgRNA_index_dir"],
-        chemistry  = config["simpleaf"]["quant"]["chemistry"],
+        index_piscem_pref = config["references"]["sgRNA_index_dir"] + "/index/piscem_idx",
+        # v0.1.2: chemistry resolved from _chemistry spec (if available),
+        # with geometry_override taking precedence over the raw config value.
+        chemistry  = (config.get("_chemistry") or {}).get("geometry_override") or config["simpleaf"]["quant"]["chemistry"],
         resolution = config["simpleaf"]["quant"]["resolution"],
         af_home    = config["simpleaf"]["af_home"],
         lock_yaml  = os.path.join(config["proj_dir"], "envs", "simpleaf.lock.yaml"),
@@ -73,9 +76,10 @@ rule simpleaf_quant:
             conda activate "$ENV_NAME"
         fi
         export ALEVIN_FRY_HOME="{params.af_home}"
+        simpleaf set-paths
 
         echo "=== simpleaf quant: {wildcards.group} ==="
-        echo "  Index:     {params.index_dir}"
+        echo "  Index:     {params.index_piscem_pref}"
         echo "  Chemistry: {params.chemistry}"
         echo "  Threads:   {threads}"
 
@@ -89,7 +93,7 @@ rule simpleaf_quant:
                 --chemistry "{params.chemistry}" \
                 --output "{params.out_dir}" \
                 --threads {threads} \
-                --index "{params.index_dir}" \
+                --index "{params.index_piscem_pref}" \
                 --reads1 "{params.reads1}" \
                 --reads2 "{params.reads2}" \
                 --t2g-map "{input.t2g}" \
@@ -102,7 +106,7 @@ rule simpleaf_quant:
                 --chemistry "{params.chemistry}" \
                 --output "{params.out_dir}" \
                 --threads {threads} \
-                --index "{params.index_dir}" \
+                --index "{params.index_piscem_pref}" \
                 --reads1 "{params.reads1}" \
                 --reads2 "{params.reads2}" \
                 --t2g-map "{input.t2g}" \

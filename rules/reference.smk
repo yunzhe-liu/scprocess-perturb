@@ -96,3 +96,49 @@ rule build_sgRNA_index:
 
         echo "Index built: {params.out_dir}"
     """
+
+# ---------------------------------------------------------------------------
+# Rule: download_whitelists
+# Downloads 10x barcode whitelists if not already cached locally.
+# 3M-february-2018.txt  — 10xv3 chemistry (3' v3, 5' v3, multiome)
+# 737K-august-2016.txt — 10xv2 / 10xv2-5p chemistry (3' v2, 5' v1/v2)
+#
+# Files are cached under the whitelist_dir specified in config.
+# This rule runs once and is skipped if both files exist.
+# ---------------------------------------------------------------------------
+rule download_whitelists:
+    output:
+        wl_3M  = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-february-2018.txt"),
+        wl_737 = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "737K-august-2016.txt"),
+    threads: 1
+    shell:"""
+        set -euo pipefail
+        WL_DIR=$(dirname "{output.wl_3M}")
+        mkdir -p "$WL_DIR"
+
+        # 3M-february-2018 (v3/v3.1/v4, multiome)
+        if [ ! -f "{output.wl_3M}" ]; then
+            echo "Downloading 3M-february-2018 whitelist..."
+            wget -q -O "{output.wl_3M}" \
+                "https://cf.10xgenomics.com/supp/cell-exp/3M-february-2018.txt.gz" 2>/dev/null
+            # If the file is gzipped, decompress; otherwise rename
+            if file "{output.wl_3M}" | grep -q gzip; then
+                mv "{output.wl_3M}" "{output.wl_3M}.gz"
+                gunzip "{output.wl_3M}.gz"
+            fi
+            echo "  Saved: {output.wl_3M}"
+        else
+            echo "3M-february-2018 whitelist already cached."
+        fi
+
+        # 737K-august-2016 (5' v1/v2, 3' v2)
+        if [ ! -f "{output.wl_737}" ]; then
+            echo "Downloading 737K-august-2016 whitelist..."
+            wget -q -O "{output.wl_737}" \
+                "https://cf.10xgenomics.com/supp/cell-exp/737K-august-2016.txt" 2>/dev/null
+            echo "  Saved: {output.wl_737}"
+        else
+            echo "737K-august-2016 whitelist already cached."
+        fi
+        echo "Whitelist download complete."
+    """

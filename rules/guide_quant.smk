@@ -50,6 +50,20 @@ rule hash_guide_quant:
         out_dir        = os.path.join(config["out_dir"], "{group}", "guide_quant"),
         umi_threshold  = config.get("hash_matcher", {}).get("umi_threshold", 1),
         cb_max_hamming = config.get("hash_matcher", {}).get("cb_max_hamming", 1),
+        # v0.1.2: chemistry resolved from _chemistry spec preferentially,
+        # falling back to the raw hash_matcher.chemistry config value.
+        ham_chemistry  = (config.get("_chemistry") or {}).get("ham_chemistry") or config.get("hash_matcher", {}).get("chemistry", "10xv3"),
+        umi_len        = (config.get("_chemistry") or {}).get("umi_len") or (10 if config.get("hash_matcher", {}).get("chemistry", "10xv3") == "10xv2-5p" else 12),
+        # Custom chemistry support: when ham_chemistry == "custom", unroll
+        # hash_matcher.custom_params as individual CLI flags.
+        is_custom      = ((config.get("_chemistry") or {}).get("ham_chemistry") == "custom") or (config.get("hash_matcher", {}).get("chemistry") == "custom"),
+        custom_cb_start    = config.get("hash_matcher", {}).get("custom_params", {}).get("cb_start", 0),
+        custom_cb_end      = config.get("hash_matcher", {}).get("custom_params", {}).get("cb_end", 16),
+        custom_umi_start   = config.get("hash_matcher", {}).get("custom_params", {}).get("umi_start", 16),
+        custom_umi_end     = config.get("hash_matcher", {}).get("custom_params", {}).get("umi_end", 28),
+        custom_window_start = config.get("hash_matcher", {}).get("custom_params", {}).get("window_start", 28),
+        custom_window_end  = config.get("hash_matcher", {}).get("custom_params", {}).get("window_end", 54),
+        custom_guide_len   = config.get("hash_matcher", {}).get("custom_params", {}).get("guide_len", 20),
         reads1 = lambda wildcards: _join_fastq(_resolve_reads(wildcards, "r1")),
         reads2 = lambda wildcards: _join_fastq(_resolve_reads(wildcards, "r2")),
     log:
@@ -66,21 +80,49 @@ rule hash_guide_quant:
 
         # Step 1: Match reads (HAM — integer encoding + numpy + multi-process)
         echo "[1/2] Matching reads (HAM, {threads} threads)..."
-        ham match \
-            -1 "{params.reads1}" \
-            -2 "{params.reads2}" \
-            -w "{input.wl}" \
-            -g "{input.hash_file}" \
-            -o "{params.out_dir}/hits.npz" \
-            -t {threads} \
-            --cb-max-hamming {params.cb_max_hamming}
+        IS_CUSTOM="{params.is_custom}"
+        if [ "$IS_CUSTOM" = "True" ]; then
+            echo "  Mode: custom chemistry"
+            echo "  cb_start={params.custom_cb_start} cb_end={params.custom_cb_end}"
+            echo "  umi_start={params.custom_umi_start} umi_end={params.custom_umi_end}"
+            echo "  window_start={params.custom_window_start} window_end={params.custom_window_end}"
+            echo "  guide_len={params.custom_guide_len}"
+            ham match \
+                -1 "{params.reads1}" \
+                -2 "{params.reads2}" \
+                -w "{input.wl}" \
+                -g "{input.hash_file}" \
+                -o "{params.out_dir}/hits.npz" \
+                -t {threads} \
+                --cb-max-hamming {params.cb_max_hamming} \
+                --chemistry custom \
+                --cb-start {params.custom_cb_start} \
+                --cb-end {params.custom_cb_end} \
+                --umi-start {params.custom_umi_start} \
+                --umi-end {params.custom_umi_end} \
+                --window-start {params.custom_window_start} \
+                --window-end {params.custom_window_end} \
+                --guide-len {params.custom_guide_len}
+        else
+            echo "  Chemistry: {params.ham_chemistry}"
+            ham match \
+                -1 "{params.reads1}" \
+                -2 "{params.reads2}" \
+                -w "{input.wl}" \
+                -g "{input.hash_file}" \
+                -o "{params.out_dir}/hits.npz" \
+                -t {threads} \
+                --cb-max-hamming {params.cb_max_hamming} \
+                --chemistry {params.ham_chemistry}
+        fi
 
         # Step 2: UMI dedup + matrix (HAM)
         echo "[2/2] UMI dedup + matrix generation..."
         ham dedup \
             -i "{params.out_dir}/hits.npz" \
             -o "{params.out_dir}/matrix" \
-            -t {params.umi_threshold}
+            -t {params.umi_threshold} \
+            --umi-len {params.umi_len}
 
         echo "  Done. Output: {params.out_dir}/matrix/"
     """
