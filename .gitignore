@@ -1,5 +1,13 @@
-__pycache__/
-*.pyc
-*.pyo
+# Snakemake runtime
 .snakemake/
-*.log
+
+# Local test configs (keep templates only)
+config/config_test_*.yaml
+config/config_kmer_check_*.yaml
+config/config_simpleaf_*.yaml
+config/samples_test_*.yaml
+config/samples_k562*.yaml*
+config/samples_papalexi.yaml
+
+# Backup files
+*.bak

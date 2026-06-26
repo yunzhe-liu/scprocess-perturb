@@ -29,15 +29,15 @@ configfile: "config/config.yaml"
 
 # ---- Load sample topology (GROUPS dict, available to all rules) ----
 # v0.1.2: samples file path can be overridden via config key.
-_samples_file = config.get("samples_file", os.path.join(BASEDIR, "config", "samples.yaml"))
-if not os.path.isabs(_samples_file):
-    _samples_file = os.path.join(BASEDIR, _samples_file)
-with open(_samples_file, "r") as f:
-    _samples_cfg = yaml.safe_load(f)
+_groups_file = config.get("groups_file", os.path.join(BASEDIR, "config", "groups.yaml"))
+if not os.path.isabs(_groups_file):
+    _groups_file = os.path.join(BASEDIR, _groups_file)
+with open(_groups_file, "r") as f:
+    _groups_cfg = yaml.safe_load(f)
 
-GROUPS = _samples_cfg.get("groups", {})
+GROUPS = _groups_cfg.get("groups", {})
 if not GROUPS:
-    sys.exit(f"ERROR: No groups defined in {_samples_file}")
+    sys.exit(f"ERROR: No groups defined in {_groups_file}")
 
 
 # ---- Resolve sgRNA FASTQ — expand glob patterns to concrete file lists ----

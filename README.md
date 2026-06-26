@@ -18,15 +18,13 @@ cd sgprocess
 conda env create -f envs/scp_analysis.lock.yaml
 conda env create -f envs/simpleaf.lock.yaml
 
-# Write your config (see Configuration section below), then:
+# Copy and edit the template config files (see Configuration below):
+#   config/config.yaml   — global settings
+#   config/groups.yaml   — input file paths per lane
+# Then:
 conda activate scp_analysis
-snakemake --configfile config/your_config.yaml --cores 48
-
-# Preview execution plan
-snakemake --configfile config/your_config.yaml --cores 1 --dry-run
+snakemake --configfile config/config.yaml --cores 48
 ```
-
-Example configs are provided in `config/` — use them as starting points.
 
 ---
 
@@ -59,10 +57,9 @@ conda activate simpleaf        # for simpleaf quant
 sgprocess/
 ├── Snakefile                     ← Snakemake entry point
 ├── config/
-│   ├── chemistry_spec.yaml       ← Chemistry parameters (single source of truth)
-│   ├── config.yaml               ← Default config
-│   ├── samples.yaml              ← Sample/lane topology
-│   └── ...                       ← Additional config variants
+│   ├── chemistry_spec.yaml       ← Chemistry parameters for all 10x chemistries
+│   ├── config.yaml               ← Global config template
+│   └── groups.yaml               ← Input data topology (lane → file paths)
 ├── rules/
 │   ├── reference.smk             ← Guide FASTA → index / hash table + whitelist download
 │   ├── whitelist.smk             ← GEX matrix → barcode whitelist (.h5 / .h5ad / .h5mu)
@@ -86,101 +83,101 @@ sgprocess/
 
 ## Configuration
 
-You need **two files**: a global config and a samples file.
+You need **two files** to run the workflow:
 
-### 1. Global config (`config/your_config.yaml`)
+### 1. Global config (`config/config.yaml`)
 
-All parameters with their meanings and defaults:
+This file sets the chemistry, quantification method, reference file paths, QC
+thresholds, and resource allocation. Copy the template and edit paths to match
+your data.
 
 ```yaml
-# ── Project ──
+# ── Paths ──
 proj_dir: /path/to/sgprocess                     # path to this repository
 out_dir: /path/to/results                        # where output files are written
 log_dir: /path/to/logs                           # where log files are written
-samples_file: config/samples.yaml                # optional: path to samples file
 
 # ── Chemistry (v0.1.2+) ──
-# One field controls everything. See §Supported Chemistries below.
-tenx_chemistry: "3v3"                            # required
-#   Options: 3v3, 3v4, 3LT, 5v3, multiome, 5v1, 5v2, custom
-
-# ── Optional: override individual chemistry fields ──
-chemistry_overrides:                             # optional
-  umi_len: 11                                    # example: override UMI length only
+tenx_chemistry: "3v3"                            # single entry — see chemistry table below
+# Options: 3v3, 3v4, 3LT, 5v3, multiome, 5v1, 5v2, custom
 
 # ── Quantification method ──
 guide_extraction:
   method: simpleaf                               # "simpleaf" | "hash_matcher"
 
+# ── Reference files ──
+references:
+  guide_fasta: /path/to/guides.fasta             # required: one protospacer per entry
+  guide_t2g_2col: /path/to/t2g.tsv               # required for simpleaf: guide_id → gene_id
+  guide_hash: /path/to/guide_hash.pkl            # required for HAM: pre-built hash table
+  sgRNA_index_dir: /path/to/piscem_index/        # required for simpleaf: piscem index
+  whitelist_dir: /path/to/whitelist_cache/       # 10x whitelist cache (auto-downloaded)
+
 # ── simpleaf settings (used when method=simpleaf) ──
 simpleaf:
-  af_home: /path/to/alevin-fry                   # required
+  af_home: /path/to/alevin-fry
   index:
-    kmer_length: 15                              # default: 15
-    minimizer_length: 11                         # default: 11
+    kmer_length: 15
+    minimizer_length: 11
   quant:
     resolution: parsimony-gene                   # "parsimony-gene" | "cr-like"
-    use_knee: false                              # true = knee calling, no whitelist needed
+    use_knee: false                              # true = knee calling (no whitelist needed)
 
 # ── HAM settings (used when method=hash_matcher) ──
 hash_matcher:
-  umi_threshold: 1                               # UMI Hamming threshold for dedup (default: 1)
-  cb_max_hamming: 1                              # max Hamming for CB correction (default: 1)
+  umi_threshold: 1
+  cb_max_hamming: 1
 
 # ── Whitelist QC thresholds ──
 whitelist:
-  min_umi: 1000                                  # minimum UMI count per cell
-  min_genes: 500                                 # minimum genes detected per cell
+  min_umi: 1000
+  min_genes: 500
 
-# ── Reference files ──
-references:
-  guide_fasta: /path/to/guides.fasta             # required: guide protospacer sequences
-  guide_t2g_2col: /path/to/t2g.tsv               # required for simpleaf: guide_id → gene_id, no header
-  guide_hash: /path/to/guide_hash.pkl            # required for HAM: pre-built hash table
-  sgRNA_index_dir: /path/to/piscem_index/        # required for simpleaf: piscem index directory
-  whitelist_dir: /path/to/whitelist_cache/       # 10x whitelist cache directory
-  guide_csv: /path/to/guide_library.csv          # optional: CSV for generating FASTA/t2g
-  translation_table: /path/to/translation.txt    # required if translation=true
-
-# ── Resource allocation ──
+# ── Resources ──
 resources:
-  simpleaf_quant_threads: 12                     # default: 12
-  simpleaf_index_threads: 4                      # default: 4
-  hash_quant_threads: 4                          # default: 4
+  simpleaf_quant_threads: 12
+  simpleaf_index_threads: 4
+  hash_quant_threads: 4
 ```
 
-**About `tenx_chemistry`:** This is the only chemistry field you need to set.
-The workflow automatically derives all downstream values — simpleaf chemistry
-string, barcode whitelist, translation behaviour, HAM chemistry, and UMI
-length — from [config/chemistry_spec.yaml](config/chemistry_spec.yaml). See the
-chemistry table below for what each value means.
+**About `tenx_chemistry`:** This single field controls everything chemistry-related.
+The workflow derives all downstream values — simpleaf chemistry string, barcode
+whitelist, whether translation is needed, HAM chemistry, and UMI length — from
+[config/chemistry_spec.yaml](config/chemistry_spec.yaml). See the chemistry table
+below.
 
 If you omit `tenx_chemistry` entirely (pre-v0.1.2 configs), the workflow falls
 back to reading manual chemistry fields from the config. This is supported but
 deprecated.
 
-### 2. Samples file
+### 2. Input data topology (`config/groups.yaml`)
 
-Defines one group per physical 10x lane. The `gex_h5` field auto-detects
-format by extension:
+This file tells the workflow **where your input files are for each 10x lane**.
+Each group maps one physical lane to its GEX expression matrix and sgRNA FASTQ
+files. You need one group per lane — a single-lane dataset has one group, a
+48-lane screen has 48 groups.
 
 ```yaml
 groups:
   lane_01:
     group_id: lane_01
-    gex_h5: /path/to/expression_matrix.{h5,h5ad,h5mu}
+    gex_h5: /path/to/expression_matrix.h5ad     # .h5, .h5ad, or .h5mu
     sgRNA_fastq_dir: /path/to/sgRNA_fastq/
-    sgRNA_r1_pattern: "*.fastq.gz"               # glob pattern for R1 files
-    sgRNA_r2_pattern: "*.fastq.gz"               # glob pattern for R2 files
+    sgRNA_r1_pattern: "*_R1_001.fastq.gz"       # glob pattern for R1 files
+    sgRNA_r2_pattern: "*_R2_001.fastq.gz"       # glob pattern for R2 files
 ```
 
-Supported GEX formats:
+The `gex_h5` field accepts three formats, auto-detected by extension:
 
 | Extension | Format | How it's read |
 |:---|:---|:---|
 | `.h5` | scprocess raw H5 (CSC sparse) | `filter_barcodes.py` script |
 | `.h5ad` | AnnData | Inline Python via `anndata.read_h5ad()` |
 | `.h5mu` | MuData | Inline Python, reads `mod['rna']` |
+
+The template `config/groups.yaml` contains additional commented examples
+(multi-lane, MuData input). The path to this file can be changed with the
+`groups_file` key in `config.yaml`.
 
 ### Supported Chemistries
 
@@ -195,9 +192,9 @@ Supported GEX formats:
 | `5v2` | 5' v2 | 26bp (16CB+10UMI) | 10bp | 737K-aug-2016 | No (TruSeq only) | Soluble RT primer |
 | `custom` | User-defined | user-defined | user-defined | user-provided | user-defined | user-defined |
 
-**What `tenx_chemistry` resolves automatically:**
+**What `tenx_chemistry` resolves automatically (example for `5v1`):**
 
-| Parameter | Consumed by | Example for `5v1` |
+| Parameter | Consumer | Resolved value |
 |:---|:---|:---|
 | simpleaf `--chemistry` | `quant.smk` | `1{b[16]u[10]x:}2{r:}` (explicit geometry) |
 | Barcode whitelist | `whitelist.smk`, `quant.smk` | `737K-august-2016.txt` |
@@ -212,23 +209,30 @@ capture.
 
 ### Chemistry Overrides
 
-When you have standard hardware but a non-standard parameter (e.g. custom guide
-length), override individual fields without leaving the standard chemistry path:
+If you have standard hardware but a non-standard experimental parameter, you
+can override individual fields from `chemistry_spec.yaml` without switching to
+full custom mode. All unspecified fields keep their standard values from the
+named chemistry entry.
 
 ```yaml
 tenx_chemistry: "5v1"
 chemistry_overrides:
-  umi_len: 11     # all other fields remain from the 5v1 spec entry
+  umi_len: 11
 ```
+
+Available override keys are the same as the fields in each chemistry_spec.yaml
+entry: `af_chemistry`, `whitelist`, `expected_ori`, `translation`,
+`geometry_override`, `ham_chemistry`, `umi_len`.
 
 ### Custom Chemistry
 
-For completely non-standard hardware or custom barcode designs:
+For completely non-standard hardware or custom barcode designs, use the
+`custom` escape hatch. You provide all chemistry parameters explicitly.
 
 ```yaml
 tenx_chemistry: custom
 custom_chemistry:
-  af_chemistry: "1{b[14]u[8]x:}2{r:}"            # raw geometry for simpleaf
+  af_chemistry: "1{b[14]u[8]x:}2{r:}"            # raw geometry string for simpleaf
   whitelist: /path/to/custom_whitelist.txt
   expected_ori: fw
   translation: false
@@ -259,12 +263,7 @@ named chemistry.
 ```bash
 cd /path/to/sgprocess
 conda activate scp_analysis
-
-# Single config
-snakemake --configfile config/your_config.yaml --cores 48
-
-# Dry-run (check what will run without executing)
-snakemake --configfile config/your_config.yaml --cores 1 --dry-run
+snakemake --configfile config/config.yaml --cores 48
 ```
 
 ### Common Snakemake options
@@ -279,15 +278,14 @@ snakemake --configfile config/your_config.yaml --cores 1 --dry-run
 
 ### Switching quantification method
 
-Change one field in your config:
+Change one field in `config.yaml`:
 
 ```yaml
 guide_extraction:
   method: simpleaf        # or: hash_matcher
 ```
 
-The workflow selects the appropriate rules automatically — no other changes
-needed.
+The workflow selects the appropriate rules automatically.
 
 ---
 
@@ -299,8 +297,8 @@ needed.
 |------|-------------|:---:|
 | Guide FASTA | One protospacer sequence per guide entry | All methods |
 | t2g map | 2-column TSV: `guide_id → gene_id`, no header | simpleaf |
-| GEX matrix | Expression data per lane (`.h5`, `.h5ad`, or `.h5mu`) | All methods |
-| Guide FASTQ | Paired sgRNA FASTQ files (R1 + R2) per lane | All methods |
+| GEX matrix (per lane) | Expression data (`.h5`, `.h5ad`, or `.h5mu`) | All methods |
+| Guide FASTQ (per lane) | Paired sgRNA FASTQ files (R1 + R2) | All methods |
 | Translation table | Feature ↔ GEX barcode mapping (~3.7M entries) | 3' chemistries only |
 | HAM guide hash | Pre-built pickle hash table | HAM only |
 | piscem index | Pre-built piscem dense index | simpleaf only |
@@ -342,9 +340,9 @@ sgRNA FASTQ ──────────────→┤                    
 ```
 
 **Core design:** GEX mRNA signal defines which droplets contain real cells.
-A whitelist of cell barcodes passing QC thresholds (minimum UMI, minimum
-genes) is extracted, automatically translated between barcode formats when
-the chemistry requires it, and fed to the guide quantification tools.
+A whitelist of cell barcodes passing QC thresholds is extracted, automatically
+translated between barcode formats when the chemistry requires it, and fed to
+the guide quantification tools.
 
 ---
 
@@ -389,8 +387,8 @@ formats. No translation is performed.
   YAML file is the single source of truth for all chemistry parameters.
   Adding a new chemistry is ~7 lines of YAML.
 - **`Snakefile`:** New `_resolve_chemistry()` function loads the spec and
-  populates `config["_chemistry"]` before rules are included. The
-  `samples_file` config key now allows overriding the samples file path.
+  populates `config["_chemistry"]` before rules are included. Groups file
+  path now configurable via `groups_file` config key.
 - **`rules/whitelist.smk`:** TO→FROM barcode translation step added,
   automatically skipped for single-oligo chemistries.
 - **`rules/merge.smk`:** Translation control reads from
@@ -410,6 +408,10 @@ formats. No translation is performed.
   a standard chemistry entry.
 - **Backward compatibility:** Configs without `tenx_chemistry` continue to
   work unchanged.
+- **Config clean-up:** Stale test and dataset-specific configs removed from
+  repository. Only template files (`config.yaml`, `groups.yaml`,
+  `chemistry_spec.yaml`) remain in `config/`. Local test configs excluded
+  via `.gitignore`.
 
 ### v0.1.1 — 2026-06-26
 

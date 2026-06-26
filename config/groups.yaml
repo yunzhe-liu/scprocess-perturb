@@ -1,0 +1,53 @@
+# ==============================================================================
+# groups.yaml — Input Data Topology
+# ==============================================================================
+# Each group maps one physical 10x lane to its input files. The workflow
+# reads this file to know: where is the GEX expression matrix for this lane?
+# Where are the sgRNA FASTQ files? What glob pattern matches their names?
+#
+# You need one group per 10x lane. A single-lane dataset has one group;
+# a 48-lane Perturb-seq screen has 48 groups.
+#
+# Fields per group:
+#   group_id          — Unique identifier for this group (Snakemake wildcard)
+#   gex_h5            — Path to GEX expression matrix (see supported formats below)
+#   sgRNA_fastq_dir   — Directory containing sgRNA FASTQ files for this lane
+#   sgRNA_r1_pattern  — Glob pattern matching Read 1 FASTQ files
+#   sgRNA_r2_pattern  — Glob pattern matching Read 2 FASTQ files
+#
+# Supported GEX matrix formats (auto-detected by file extension):
+#   .h5   — scprocess raw H5 matrix (CSC sparse)
+#   .h5ad — AnnData (from scanpy, pertpy, or published datasets)
+#   .h5mu — MuData (reads the 'rna' modality)
+# ==============================================================================
+
+groups:
+  # ── Example: single-lane dataset with AnnData GEX ──
+  # lane_01:
+  #   group_id: lane_01
+  #   gex_h5: /path/to/expression_matrix.h5ad
+  #   sgRNA_fastq_dir: /path/to/sgRNA_fastq/
+  #   sgRNA_r1_pattern: "*_R1_001.fastq.gz"
+  #   sgRNA_r2_pattern: "*_R2_001.fastq.gz"
+
+  # ── Example: multi-lane dataset with scprocess .h5 output ──
+  # lane_01:
+  #   group_id: lane_01
+  #   gex_h5: /path/to/lane01_filtered.h5
+  #   sgRNA_fastq_dir: /path/to/fastq/by_lane/lane_01/
+  #   sgRNA_r1_pattern: "lane01_sgRNA_*_R1_001.fastq.gz"
+  #   sgRNA_r2_pattern: "lane01_sgRNA_*_R2_001.fastq.gz"
+  # lane_02:
+  #   group_id: lane_02
+  #   gex_h5: /path/to/lane02_filtered.h5
+  #   sgRNA_fastq_dir: /path/to/fastq/by_lane/lane_02/
+  #   sgRNA_r1_pattern: "lane02_sgRNA_*_R1_001.fastq.gz"
+  #   sgRNA_r2_pattern: "lane02_sgRNA_*_R2_001.fastq.gz"
+
+  # ── Example: dataset from MuData (e.g. pertpy published data) ──
+  # lane_01:
+  #   group_id: lane_01
+  #   gex_h5: /path/to/dataset.h5mu
+  #   sgRNA_fastq_dir: /path/to/sgRNA_fastq/
+  #   sgRNA_r1_pattern: "*_R1_001.fastq.gz"
+  #   sgRNA_r2_pattern: "*_R2_001.fastq.gz"
