@@ -217,7 +217,7 @@ named chemistry entry.
 ```yaml
 tenx_chemistry: "5v1"
 chemistry_overrides:
-  umi_len: 11
+  guide_len: 21
 ```
 
 Available override keys are the same as the fields in each chemistry_spec.yaml
@@ -287,6 +287,22 @@ guide_extraction:
 
 The workflow selects the appropriate rules automatically.
 
+### Knee mode (no whitelist needed)
+
+When you don't have a GEX expression matrix, set `use_knee: true` to let
+simpleaf call cells automatically from the UMI knee:
+
+```yaml
+simpleaf:
+  quant:
+    use_knee: true
+```
+
+Only available with method: simpleaf (HAM requires a whitelist).  Knee-called
+cells are not filtered by GEX QC so counts will be noisier than whitelist mode.
+
+
+
 ---
 
 ## Inputs and Outputs
@@ -328,14 +344,14 @@ tool.
 ## Workflow Overview
 
 ```
-                    ┌─────────────────────────────────────────┐
-GEX matrix (H5/H5AD/H5MU) → extract whitelist                │
-Guide FASTA ───────────────→ build index / hash table        │
-sgRNA FASTQ ──────────────→┤                                 │
+                    ┌───────────────────────────────────────┐
+GEX matrix (H5/H5AD/H5MU) → extract whitelist               │
+Guide FASTA ───────────────→ build index / hash table       │
+sgRNA FASTQ ───────────────→┤                               │
                             │   ┌─ simpleaf: piscem + alevin-fry
                             ├──→│─ HAM: hash match + dedup  ├──→ merge ──→ MEX
                             │   └───────────────────────────┘   + barcode
-                            └───────────────────────────────────┘   translation
+                            └───────────────────────────────────┘  translation
                                                                      (automatic)
 ```
 
