@@ -82,7 +82,7 @@ _SPEC_PATH = os.path.join(BASEDIR, "config", "chemistry_spec.yaml")
 if not os.path.exists(_SPEC_PATH):
     sys.exit(
         "ERROR: config/chemistry_spec.yaml not found. "
-        "This file is required by sgprocess >= 0.1.2.")
+        "This file is required by scprocess-perturb >= 0.1.2.")
 with open(_SPEC_PATH, "r") as f:
     _CHEMISTRY_SPEC = yaml.safe_load(f)
 

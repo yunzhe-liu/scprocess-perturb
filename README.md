@@ -1,4 +1,4 @@
-# sgprocess — Single-Cell Guide Extraction Workflow
+# scprocess-perturb — Single-Cell Guide Extraction Workflow
 
 **A Snakemake workflow for extracting sgRNA guide counts from Perturb-seq data.**
 
@@ -13,8 +13,8 @@ and tool-specific parameters for all standard 10x direct-capture chemistries.
 ## Quick Start
 
 ```bash
-git clone https://github.com/yunzhe-liu/sgprocess.git
-cd sgprocess
+git clone https://github.com/yunzhe-liu/scprocess-perturb.git
+cd scprocess-perturb
 conda env create -f envs/scp_analysis.lock.yaml
 conda env create -f envs/simpleaf.lock.yaml
 
@@ -54,7 +54,7 @@ conda activate simpleaf        # for simpleaf quant
 ## Repository Structure
 
 ```
-sgprocess/
+scprocess-perturb/
 ├── Snakefile                     ← Snakemake entry point
 ├── config/
 │   ├── chemistry_spec.yaml       ← Chemistry parameters for all 10x chemistries
@@ -93,7 +93,7 @@ your data.
 
 ```yaml
 # ── Paths ──
-proj_dir: /path/to/sgprocess                     # path to this repository
+proj_dir: /path/to/scprocess-perturb                     # path to this repository
 out_dir: /path/to/results                        # where output files are written
 log_dir: /path/to/logs                           # where log files are written
 
@@ -261,7 +261,7 @@ named chemistry.
 ### Basic invocation
 
 ```bash
-cd /path/to/sgprocess
+cd /path/to/scprocess-perturb
 conda activate scp_analysis
 snakemake --configfile config/config.yaml --cores 48
 ```

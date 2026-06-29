@@ -1,12 +1,12 @@
 # ==============================================================================
-# config.yaml — sgprocess Global Configuration
+# config.yaml — scprocess-perturb Global Configuration
 # ==============================================================================
 # Copy this file and edit paths to match your data layout.
 # See README.md for full documentation of every parameter.
 # ==============================================================================
 
 # ── Paths ──
-proj_dir: /path/to/sgprocess
+proj_dir: /path/to/scprocess-perturb
 out_dir: /path/to/results
 log_dir: /path/to/logs
 
@@ -26,7 +26,7 @@ tenx_chemistry: "3v3"
 
 # ── Input data topology file ──
 # Path to the groups file that maps each 10x lane to its input files.
-# Relative paths are resolved from the sgprocess repository root.
+# Relative paths are resolved from the scprocess-perturb repository root.
 groups_file: config/groups.yaml
 
 # ── Quantification method ──
