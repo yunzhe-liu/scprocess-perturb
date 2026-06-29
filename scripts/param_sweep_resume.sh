@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-SGPROCESS=/home/yunzliu/sgprocess
+SCPROCESS_PERTURB=/home/yunzliu/scprocess-perturb
 CONDA_BASE=/home/yunzliu/software/miniconda3
 INDEX_BASE=/data/yunzliu/simpleaf_index_k13
 REF_FASTA=/data/yunzliu/references/guides_fixed.fasta
