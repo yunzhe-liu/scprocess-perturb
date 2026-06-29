@@ -1,5 +1,5 @@
 # scprocess-perturb
-## Single-Cell Guide Extraction Workflow
+## A Single-Cell Perturbation Screen Preprocessing Workflow
 
 **A Snakemake workflow for extracting sgRNA guide counts from Perturb-seq data.**
 
