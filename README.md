@@ -100,7 +100,7 @@ log_dir: /path/to/logs                           # where log files are written
 
 # ── Chemistry (v0.1.2+) ──
 tenx_chemistry: "3v3"                            # single entry — see chemistry table below
-# Options: 3v3, 3v4, 3LT, 5v3, multiome, 5v1, 5v2, custom
+# Options: 3v3, 3v4, 3LT, multiome, 5v1, 5v2, 5v3, custom
 
 # ── Quantification method ──
 guide_extraction:
@@ -182,31 +182,48 @@ The template `config/groups.yaml` contains additional commented examples
 
 ### Supported Chemistries
 
-| `tenx_chemistry` | 10x Kit | R1 layout | UMI | Whitelist | Translation | Guide capture |
-|:---|:---|:---|:---:|:---|:---:|:---|
-| `3v3` | 3' v3 / v3.1 | 28bp (16CB+12UMI) | 12bp | 3M-feb-2018 | Yes (TruSeq↔Nextera) | cs1/cs2 bead |
-| `3v4` | 3' v4 (GEM-X) | 28bp (16CB+12UMI) | 12bp | 3M-feb-2018 | Yes | cs1/cs2 bead |
-| `3LT` | 3' LT | 28bp (16CB+12UMI) | 12bp | 3M-feb-2018 | Yes | cs1/cs2 bead |
-| `5v3` | 5' v3 | 28bp (16CB+12UMI) | 12bp | 3M-feb-2018 | Yes | cs1/cs2 bead |
-| `multiome` | Multiome (GEX) | 28bp (16CB+12UMI) | 12bp | 3M-feb-2018 | Yes | cs1/cs2 bead |
-| `5v1` | 5' v1.0 | 26bp (16CB+10UMI) | 10bp | 737K-aug-2016 | No (TruSeq only) | Soluble RT primer |
-| `5v2` | 5' v2 | 26bp (16CB+10UMI) | 10bp | 737K-aug-2016 | No (TruSeq only) | Soluble RT primer |
-| `custom` | User-defined | user-defined | user-defined | user-provided | user-defined | user-defined |
+Three configuration classes cover the full range of supported inputs.
 
-**What `tenx_chemistry` resolves automatically (example for `5v1`):**
+---
 
-| Parameter | Consumer | Resolved value |
-|:---|:---|:---|
-| simpleaf `--chemistry` | `quant.smk` | `1{b[16]u[10]x:}2{r:}` (explicit geometry) |
-| Barcode whitelist | `whitelist.smk`, `quant.smk` | `737K-august-2016.txt` |
-| Expected orientation | `quant.smk` | `rc` |
-| Barcode translation | `whitelist.smk`, `merge.smk` | skipped (TruSeq only) |
-| HAM `--chemistry` | `guide_quant.smk` | `10xv2-5p` |
-| HAM `--umi-len` | `guide_quant.smk` | `10` |
+**Class A — 3' Direct Capture** · Bead-borne cs1/cs2 RT primer · Dual-oligo barcode encoding (TruSeq + Nextera) · Barcode translation required
 
-**Unsupported:** Indirect capture methods (e.g. 3' v2 with GBC) where the
-protospacer is absent from the guide FASTQ R2. This pipeline requires direct
-capture.
+| `tenx_chemistry` | 10x Kit | R1 layout | UMI | Whitelist | Translation | Validated |
+|:---|:---|:---|:---:|:---|:---:|:---:|
+| `3v3` | 3' v3 / v3.1 | 28bp (16CB + 12UMI) | 12bp | 3M-feb-2018 | Yes (TruSeq↔Nextera) | ✅ |
+| `3v4` | 3' v4 (GEM-X) | 28bp (16CB + 12UMI) | 12bp | 3M-3pgex-may-2023 | Yes | 💡 |
+| `3LT` | 3' LT | 28bp (16CB + 12UMI) | 12bp | 3M-feb-2018 | Yes | 💡 |
+| `multiome` | Multiome (GEX) | 28bp (16CB + 12UMI) | 12bp | 3M-feb-2018 | Yes | 💡 |
+
+> `3v3` share identical library structure and are expected to behave identically. `3v4` uses a distinct whitelist (`3M-3pgex-may-2023`) introduced with GEM-X and its own translation file — the dual-oligo mechanism is unchanged.
+
+---
+
+**Class B — 5' Direct Capture** · Soluble scaffold RT primer + barcoded TSO · Single-oligo barcode encoding (TruSeq only) · No translation required
+
+| `tenx_chemistry` | 10x Kit | R1 layout | UMI | Whitelist | Translation | Validated |
+|:---|:---|:---|:---:|:---|:---:|:---:|
+| `5v1` | 5' v1.0 | 26bp (16CB + 10UMI) | 10bp | 737K-aug-2016 | No (TruSeq only) | ✅ |
+| `5v2` | 5' v2 | 26bp (16CB + 10UMI) | 10bp | 737K-aug-2016 | No (TruSeq only) | 💡 |
+| `5v3` | 5' v3 (GEM-X) | 28bp (16CB + 12UMI) | 12bp | 3M-5pgex-jan-2023 | No (TruSeq only) | 💡 |
+
+> `5v3` shares the same single-oligo capture mechanism with `5v1`/`5v2` (no barcode translation required), but uses a 12 bp UMI and a distinct whitelist (`3M-5pgex-jan-2023`) introduced with the GEM-X platform. It is **not** interchangeable with `3v3`/`3v4` despite the same UMI length.
+
+---
+
+**Class C — Custom** · All parameters supplied explicitly by the user. For non-standard barcoding schemes, mixed-index designs, or in-house capture sequences.
+
+| `tenx_chemistry` | R1 layout | UMI | Whitelist | Translation | Validated |
+|:---|:---|:---:|:---|:---:|:---:|
+| `custom` | user-defined | user-defined | user-provided | user-defined | — |
+
+> See [Custom Chemistry](#custom-chemistry) for the full parameter specification. When `tenx_chemistry: custom`, all downstream rules read exclusively from `custom_chemistry:` and `hash_matcher: custom_params:` blocks; no `chemistry_spec.yaml` lookup is performed.
+
+---
+
+> **`3v2` is explicitly absent.** 3' v2 chemistry predates direct capture; datasets using it almost universally employ GBC indirect capture, for which the guide sequence is not present in the guide FASTQ R2. It is not a supported configuration.
+>
+> ✅ = validated on real data · 💡 = theoretically supported, pending validation
 
 ### Chemistry Overrides
 
@@ -320,8 +337,12 @@ cells are not filtered by GEX QC so counts will be noisier than whitelist mode.
 | HAM guide hash | Pre-built pickle hash table | HAM only |
 | piscem index | Pre-built piscem dense index | simpleaf only |
 
-10x barcode whitelists (`3M-february-2018.txt`, `737K-august-2016.txt`) are
-auto-downloaded by the workflow if not present in `whitelist_dir`.
+10x barcode whitelists and translation tables are auto-downloaded by the
+workflow from the teichlab scg_lib_structs mirror if not present in
+`whitelist_dir`. Four whitelist files and two translation files are managed
+automatically (see `reference.smk`). The `3M-3pgex-may-2023` whitelist
+(3' v4) has no public mirror — it must be copied from a Cell Ranger ≥ 8.0.1
+installation before using the `3v4` chemistry.
 
 ### What the workflow produces
 
@@ -382,7 +403,7 @@ the guide quantification tools.
 Two capture mechanisms exist in 10x chemistries. The workflow handles both
 automatically through the `translation` field in `chemistry_spec.yaml`.
 
-**Dual-oligo systems (3' v3/v4, 5' v3, multiome):** cs1/cs2 bead-borne
+**Dual-oligo systems (3' v3/v4, 3LT, multiome):** cs1/cs2 bead-borne
 primers carry two oligo variants — TruSeq for mRNA (GEX) and Nextera for
 Feature Barcoding (guide). These encode the same cell barcode in different
 nucleotide formats. The workflow translates:
@@ -390,13 +411,36 @@ nucleotide formats. The workflow translates:
   matches guide FASTQ barcodes.
 - **Merge:** Feature → GEX, so output barcodes match mRNA conventions.
 
-**Single-oligo systems (5' v1/v2):** A soluble RT primer indexes guide cDNA
+**Single-oligo systems (5' v1/v2/v3):** A soluble RT primer indexes guide cDNA
 to the same TruSeq barcode as mRNA. Both libraries share identical barcode
 formats. No translation is performed.
 
 ---
 
 ## Changelog
+
+### v0.1.3 — 2026-06-30
+
+- **5v3 chemistry corrected:** Moved from Class A (3' dual-oligo) to Class B
+  (5' single-oligo). `5v3` is GEM-X 5' v3 — soluble RT primer, TruSeq-only,
+  no translation required. Uses 12 bp UMI, whitelist `3M-5pgex-jan-2023`,
+  geometry override `1{b[16]u[12]x:}2{r:}`, and HAM chemistry
+  `10xv2-5p-12umi` (new).
+- **3v4 whitelist corrected:** Changed from `3M-feb-2018` to
+  `3M-3pgex-may-2023` — GEM-X 3' v4 introduced a new barcode set with its
+  own translation file.
+- **HAM `10xv2-5p-12umi` chemistry:** New entry in `CHEMISTRY_CONFIGS`
+  — 16 bp CB, 12 bp UMI, 19 bp guide window at R2[16:35], whitelist
+  `3M-5pgex-jan-2023`. Used by 5' v3 (GEM-X).
+- **`reference.smk` download overhaul:** Replaced broken CDN URLs with
+  teichlab `scg_lib_structs` mirror. Now downloads 4 whitelists + 2
+  translation files. `3M-3pgex-may-2023` whitelist (3v4) has no public
+  mirror — workflow prints a clear path instruction for manual copy from
+  Cell Ranger ≥ 8.0.1.
+- **README chemistry table restructured:** Three-class format (A: 3' Direct
+  Capture, B: 5' Direct Capture, C: Custom) with validation status markers.
+- **Barcode Translation chapter corrected:** Moved 5v3 from dual-oligo to
+  single-oligo list.
 
 ### v0.1.2 — 2026-06-26
 

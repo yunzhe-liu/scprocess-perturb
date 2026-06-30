@@ -99,46 +99,97 @@ rule build_sgRNA_index:
 
 # ---------------------------------------------------------------------------
 # Rule: download_whitelists
-# Downloads 10x barcode whitelists if not already cached locally.
-# 3M-february-2018.txt  — 10xv3 chemistry (3' v3, 5' v3, multiome)
-# 737K-august-2016.txt — 10xv2 / 10xv2-5p chemistry (3' v2, 5' v1/v2)
+# Downloads 10x barcode whitelists and translation tables if not cached.
 #
-# Files are cached under the whitelist_dir specified in config.
-# This rule runs once and is skipped if both files exist.
+# Whitelist files (barcode lists for CB correction):
+#   737K-august-2016.txt      — 3' v2, 5' v1/v2           (teichlab mirror)
+#   3M-february-2018.txt      — 3' v3/v3.1, 3LT, multiome  (teichlab mirror)
+#   3M-5pgex-jan-2023.txt     — 5' v3 (GEM-X)              (teichlab mirror)
+#   3M-3pgex-may-2023.txt     — 3' v4 (GEM-X)              (Cell Ranger only)
+#
+# Translation files (RNA ↔ Feature barcode mapping for dual-oligo chemistries):
+#   translation_3M-february-2018.txt     — 3' v3/v3.1       (teichlab mirror)
+#   translation_3M-3pgex-may-2023.txt    — 3' v4 (GEM-X)    (teichlab mirror)
+#
+# All files are cached under the whitelist_dir specified in config.
+# Files that already exist locally are skipped.
 # ---------------------------------------------------------------------------
 rule download_whitelists:
     output:
-        wl_3M  = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-february-2018.txt"),
-        wl_737 = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "737K-august-2016.txt"),
+        wl_737   = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "737K-august-2016.txt"),
+        wl_3M    = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-february-2018.txt"),
+        wl_5pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-5pgex-jan-2023.txt"),
+        wl_3pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-3pgex-may-2023.txt"),
+        tr_3M    = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "translation_3M-february-2018.txt"),
+        tr_3pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "translation_3M-3pgex-may-2023.txt"),
     threads: 1
     shell:"""
         set -euo pipefail
         WL_DIR=$(dirname "{output.wl_3M}")
         mkdir -p "$WL_DIR"
+        MIRROR="https://teichlab.github.io/scg_lib_structs/data/10X-Genomics"
 
-        # 3M-february-2018 (v3/v3.1/v4, multiome)
+        # 737K-august-2016 (5' v1/v2)
+        if [ ! -f "{output.wl_737}" ]; then
+            echo "Downloading 737K-august-2016 whitelist..."
+            wget -q -O "{output.wl_737}.gz" "$MIRROR/737K-august-2016.txt.gz"
+            gunzip "{output.wl_737}.gz"
+            echo "  Saved: {output.wl_737}"
+        else
+            echo "737K-august-2016 whitelist already cached."
+        fi
+
+        # 3M-february-2018 (3' v3/v3.1, 3LT, multiome)
         if [ ! -f "{output.wl_3M}" ]; then
             echo "Downloading 3M-february-2018 whitelist..."
-            wget -q -O "{output.wl_3M}" \
-                "https://cf.10xgenomics.com/supp/cell-exp/3M-february-2018.txt.gz" 2>/dev/null
-            # If the file is gzipped, decompress; otherwise rename
-            if file "{output.wl_3M}" | grep -q gzip; then
-                mv "{output.wl_3M}" "{output.wl_3M}.gz"
-                gunzip "{output.wl_3M}.gz"
-            fi
+            wget -q -O "{output.wl_3M}.gz" "$MIRROR/3M-february-2018.txt.gz"
+            gunzip "{output.wl_3M}.gz"
             echo "  Saved: {output.wl_3M}"
         else
             echo "3M-february-2018 whitelist already cached."
         fi
 
-        # 737K-august-2016 (5' v1/v2, 3' v2)
-        if [ ! -f "{output.wl_737}" ]; then
-            echo "Downloading 737K-august-2016 whitelist..."
-            wget -q -O "{output.wl_737}" \
-                "https://cf.10xgenomics.com/supp/cell-exp/737K-august-2016.txt" 2>/dev/null
-            echo "  Saved: {output.wl_737}"
+        # 3M-5pgex-jan-2023 (5' v3, GEM-X)
+        if [ ! -f "{output.wl_5pgex}" ]; then
+            echo "Downloading 3M-5pgex-jan-2023 whitelist..."
+            wget -q -O "{output.wl_5pgex}.gz" "$MIRROR/3M-5pgex-jan-2023.txt.gz"
+            gunzip "{output.wl_5pgex}.gz"
+            echo "  Saved: {output.wl_5pgex}"
         else
-            echo "737K-august-2016 whitelist already cached."
+            echo "3M-5pgex-jan-2023 whitelist already cached."
         fi
+
+        # 3M-3pgex-may-2023 (3' v4, GEM-X) — no public mirror
+        if [ ! -f "{output.wl_3pgex}" ]; then
+            echo "NOTE: 3M-3pgex-may-2023 whitelist has no public download URL."
+            echo "  This file is bundled with Cell Ranger ≥ 8.0.1."
+            echo "  Copy it from:"
+            echo "    cellranger-8.x.x/lib/python/cellranger/barcodes/3M-3pgex-may-2023.txt.gz"
+            echo "  to: {output.wl_3pgex}"
+            echo "  Then re-run the workflow. (3v4 chemistry only; other chemistries unaffected.)"
+        else
+            echo "3M-3pgex-may-2023 whitelist already cached."
+        fi
+
+        # Translation: 3M-february-2018 (3' v3/v3.1)
+        if [ ! -f "{output.tr_3M}" ]; then
+            echo "Downloading translation_3M-february-2018..."
+            wget -q -O "{output.tr_3M}.gz" "$MIRROR/translation_3M-february-2018.txt.gz"
+            gunzip "{output.tr_3M}.gz"
+            echo "  Saved: {output.tr_3M}"
+        else
+            echo "translation_3M-february-2018 already cached."
+        fi
+
+        # Translation: 3M-3pgex-may-2023 (3' v4, GEM-X)
+        if [ ! -f "{output.tr_3pgex}" ]; then
+            echo "Downloading translation_3M-3pgex-may-2023..."
+            wget -q -O "{output.tr_3pgex}.gz" "$MIRROR/translation_3M-3pgex-may-2023.txt.gz"
+            gunzip "{output.tr_3pgex}.gz"
+            echo "  Saved: {output.tr_3pgex}"
+        else
+            echo "translation_3M-3pgex-may-2023 already cached."
+        fi
+
         echo "Whitelist download complete."
     """
