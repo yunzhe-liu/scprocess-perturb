@@ -35,15 +35,15 @@ rule simpleaf_quant:
     input:
         r1_files = lambda wildcards: _resolve_reads(wildcards, "r1"),
         r2_files = lambda wildcards: _resolve_reads(wildcards, "r2"),
-        wl       = (lambda wildcards: []) if USE_KNEE else os.path.join(config["out_dir"], "{group}", "barcode_whitelist_noheader.txt"),
+        wl       = (lambda wildcards: []) if USE_KNEE else os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist_noheader.txt"),
         idx_ctab = os.path.join(config["references"]["sgRNA_index_dir"], "index", "piscem_idx.ctab"),
         t2g      = config["references"]["guide_t2g_2col"],
     output:
-        mtx  = os.path.join(config["out_dir"], "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat.mtx"),
-        rows = os.path.join(config["out_dir"], "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat_rows.txt"),
-        cols = os.path.join(config["out_dir"], "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat_cols.txt"),
+        mtx  = os.path.join(config["out_dir"], "lanes", "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat.mtx"),
+        rows = os.path.join(config["out_dir"], "lanes", "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat_rows.txt"),
+        cols = os.path.join(config["out_dir"], "lanes", "{group}", "simpleaf_quant", "af_quant", "alevin", "quants_mat_cols.txt"),
     params:
-        out_dir    = os.path.join(config["out_dir"], "{group}", "simpleaf_quant"),
+        out_dir    = os.path.join(config["out_dir"], "lanes", "{group}", "simpleaf_quant"),
         index_dir  = config["references"]["sgRNA_index_dir"],
         index_piscem_pref = config["references"]["sgRNA_index_dir"] + "/index/piscem_idx",
         # v0.1.2: chemistry resolved from _chemistry spec (if available),

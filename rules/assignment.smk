@@ -89,15 +89,15 @@ def _method_flags(method_name):
 rule run_assignment:
     """Run one assignment method on merged MEX -> unified assignment CSV."""
     input:
-        mtx  = os.path.join(config["out_dir"], "merged", "merged_matrix.mtx.gz"),
-        bc   = os.path.join(config["out_dir"], "merged", "merged_barcodes.tsv.gz"),
-        feat = os.path.join(config["out_dir"], "merged", "merged_features.tsv.gz"),
+        mtx  = os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
+        bc   = os.path.join(config["out_dir"], "guide_matrix", "merged_barcodes.tsv.gz"),
+        feat = os.path.join(config["out_dir"], "guide_matrix", "merged_features.tsv.gz"),
     output:
         csv = os.path.join(config["out_dir"], "assignment", "{method}",
                            "assignments.csv"),
     params:
         method       = "{method}",
-        mex_dir      = os.path.join(config["out_dir"], "merged"),
+        mex_dir      = os.path.join(config["out_dir"], "guide_matrix"),
         out_dir      = os.path.join(config["out_dir"], "assignment", "{method}"),
         raw_csv      = os.path.join(config["out_dir"], "assignment", "{method}",
                                     "_raw_assignments.csv"),

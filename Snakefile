@@ -143,6 +143,48 @@ def _resolve_chemistry(cfg):
 _resolve_chemistry(config)
 
 
+# ---- Reference auto-derivation (v0.2.1+) ----
+# All reference paths fall back to {out_dir}/refs/ if not set by user.
+# This means users only need to provide guide_csv — FASTA, t2g, piscem index,
+# guide hash, and 10x whitelists are all auto-generated from it.
+_refs = config.setdefault("references", {})
+_ref_dir = os.path.join(config["out_dir"], "refs")
+_refs.setdefault("guide_csv", config.get("guide_csv", ""))
+_refs.setdefault("guide_fasta",       os.path.join(_ref_dir, "guides.fasta"))
+_refs.setdefault("guide_t2g_2col",    os.path.join(_ref_dir, "t2g.tsv"))
+_refs.setdefault("sgRNA_index_dir",   os.path.join(_ref_dir, "piscem_index"))
+_refs.setdefault("guide_hash",        os.path.join(_ref_dir, "guide_hash.pkl"))
+_refs.setdefault("whitelist_dir",     os.path.join(_ref_dir, "whitelist_cache"))
+
+# ---- Section defaults (v0.2.1+) ----
+# Entire sections can be omitted from config.yaml; defaults are applied here.
+_wl = config.setdefault("whitelist", {})
+_wl.setdefault("min_umi", 1000)
+_wl.setdefault("min_genes", 500)
+
+_res = config.setdefault("resources", {})
+_res.setdefault("simpleaf_quant_threads", 12)
+_res.setdefault("simpleaf_index_threads", 4)
+_res.setdefault("hash_quant_threads", 4)
+
+_ham = config.setdefault("hash_matcher", {})
+_ham.setdefault("umi_threshold", 1)
+_ham.setdefault("cb_max_hamming", 1)
+
+_saf = config.setdefault("simpleaf", {})
+_saf_idx = _saf.setdefault("index", {})
+_saf_idx.setdefault("kmer_length", 15)
+_saf_idx.setdefault("minimizer_length", 11)
+_saf_quant = _saf.setdefault("quant", {})
+_saf_quant.setdefault("resolution", "parsimony-gene")
+_saf_quant.setdefault("use_knee", False)
+
+# Assignment guide_csv falls back to top-level guide_csv
+_asgn = config.setdefault("assignment", {})
+_asgn.setdefault("guide_csv", "")
+_asgn.setdefault("methods", [])
+
+
 # ---- Method selection ----
 # Supported: "simpleaf" (default) | "hash_matcher"
 METHOD = config.get("guide_extraction", {}).get("method", "simpleaf")
@@ -174,9 +216,9 @@ for _m in _assignment_methods:
 
 rule all:
     input:
-        os.path.join(config["out_dir"], "merged", "merged_matrix.mtx.gz"),
-        os.path.join(config["out_dir"], "merged", "merged_barcodes.tsv.gz"),
-        os.path.join(config["out_dir"], "merged", "merged_features.tsv.gz"),
+        os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
+        os.path.join(config["out_dir"], "guide_matrix", "merged_barcodes.tsv.gz"),
+        os.path.join(config["out_dir"], "guide_matrix", "merged_features.tsv.gz"),
         *_assignment_targets,
 
 

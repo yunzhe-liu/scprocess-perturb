@@ -40,14 +40,14 @@ rule hash_guide_quant:
     input:
         r1_files = lambda wildcards: _resolve_reads(wildcards, "r1"),
         r2_files = lambda wildcards: _resolve_reads(wildcards, "r2"),
-        wl       = os.path.join(config["out_dir"], "{group}", "barcode_whitelist_noheader.txt"),
+        wl       = os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist_noheader.txt"),
         hash_file = config["references"]["guide_hash"],
     output:
-        matrix   = os.path.join(config["out_dir"], "{group}", "guide_quant", "matrix", "matrix.mtx.gz"),
-        barcodes = os.path.join(config["out_dir"], "{group}", "guide_quant", "matrix", "barcodes.tsv.gz"),
-        features = os.path.join(config["out_dir"], "{group}", "guide_quant", "matrix", "features.tsv.gz"),
+        matrix   = os.path.join(config["out_dir"], "lanes", "{group}", "guide_quant", "matrix", "matrix.mtx.gz"),
+        barcodes = os.path.join(config["out_dir"], "lanes", "{group}", "guide_quant", "matrix", "barcodes.tsv.gz"),
+        features = os.path.join(config["out_dir"], "lanes", "{group}", "guide_quant", "matrix", "features.tsv.gz"),
     params:
-        out_dir        = os.path.join(config["out_dir"], "{group}", "guide_quant"),
+        out_dir        = os.path.join(config["out_dir"], "lanes", "{group}", "guide_quant"),
         umi_threshold  = config.get("hash_matcher", {}).get("umi_threshold", 1),
         cb_max_hamming = config.get("hash_matcher", {}).get("cb_max_hamming", 1),
         # v0.1.2: chemistry resolved from _chemistry spec preferentially,

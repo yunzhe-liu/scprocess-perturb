@@ -31,8 +31,8 @@ for all standard 10x direct-capture chemistries.
                     └────────────────┬────────────────────┘
                                      │
                                      ▼
-                              merged MEX trio
-                       (cells × guides, gzip MEX)
+                              guide_matrix/
+                       (MEX trio, cells × guides)
                                      │
                                      ▼
                     ┌─────────────────────────────────────┐
@@ -51,10 +51,10 @@ for all standard 10x direct-capture chemistries.
                     └─────────────────────────────────────┘
 ```
 
-**Guide extraction** produces a merged (cells × guides) UMI count matrix in
-standard MEX format. **Guide assignment** converts that matrix into a per-cell
-perturbation call — `perturbation_obs.csv` — ready to join into an expression
-AnnData or MuData object.
+**Guide extraction** produces a per-lane (cells × guides) UMI count matrix in
+standard MEX format under `guide_matrix/`. **Guide assignment** converts that
+matrix into per-cell perturbation calls — `perturbation_obs.csv` — ready to
+join into expression AnnData or MuData objects.
 
 ---
 
@@ -75,7 +75,7 @@ snakemake --configfile config/config.yaml --cores 48
 ```
 
 By default the workflow runs `pgmm_em` assignment on `guide_design: dual`.
-To skip assignment and produce only the merged MEX trio, remove the
+To skip assignment and produce only `guide_matrix/`, remove the
 `assignment:` section from `config.yaml`.  To enable additional methods,
 add them to `assignment.methods`.
 
@@ -116,7 +116,7 @@ The `merge_matrices` rule vertically stacks per-lane MEX matrices, appends
 `-L{NN}` lane suffixes to cell barcodes, and produces the final merged trio:
 
 ```
-{out_dir}/merged/
+{out_dir}/guide_matrix/
 ├── merged_matrix.mtx.gz       ← cells × guides, gzip compressed
 ├── merged_barcodes.tsv.gz     ← cell barcodes (-L{NN} suffix)
 └── merged_features.tsv.gz     ← guide feature IDs
@@ -180,8 +180,6 @@ All parameters are configurable with sensible defaults.
 ```yaml
 assignment:
   guide_design: dual              # single | dual | multi
-  guide_csv: /path/to/guide_library.csv
-
   methods:
     - pgmm_em                     # default
     # - umi_threshold              # baseline
@@ -284,7 +282,6 @@ connect each cell's perturbation identity with its transcriptome.
 {out_dir}/assignment/{method}/
 ├── assignments.csv               ← unified schema (all guides, ranked)
 ├── perturbation_obs.csv          ← per-cell perturbation call
-├── _raw_assignments.csv          ← method's raw output
 ├── monitoring.json               ← wall time, peak RSS, stats
 └── run.log                       ← stdout + stderr
 ```
@@ -304,49 +301,56 @@ out_dir: /path/to/results
 log_dir: /path/to/logs
 
 # ── Chemistry ──
-tenx_chemistry: "3v3"          # 3v3 | 3v4 | 3LT | multiome | 5v1 | 5v2 | 5v3 | custom
+# 3v3 | 3v4 | 3LT | multiome | 5v1 | 5v2 | 5v3 | custom
+tenx_chemistry: "3v3"
+
+# ── Guide library ──
+# CSV used to generate FASTA + t2g for quantification and to map
+# assigned guide IDs to genes/constructs.
+guide_csv: /path/to/guide_library.csv
 
 # ── Guide extraction ──
 guide_extraction:
-  method: simpleaf              # "simpleaf" | "hash_matcher"
-
-references:
-  guide_fasta: /path/to/guides.fasta
-  guide_t2g_2col: /path/to/t2g.tsv
-  guide_csv: /path/to/guide_library.csv     # optional — auto-generate FASTA + t2g
-  guide_hash: /path/to/guide_hash.pkl       # HAM only
-  sgRNA_index_dir: /path/to/piscem_index/   # simpleaf only
-  whitelist_dir: /path/to/whitelist_cache/
-
-# ── Guide assignment (v0.2.0+) ──
-assignment:
-  guide_design: dual            # single | dual | multi
-  guide_csv: /path/to/guide_library.csv
-  methods:
-    - pgmm_em
-  pgmm_em:
-    umi_threshold: 3
-    prob_threshold: 0.75
-    workers: 16
-    max_em_iter: 200
+  method: simpleaf                    # simpleaf (default) | hash_matcher
 
 simpleaf:
   af_home: /path/to/alevin-fry
-  index: {kmer_length: 15, minimizer_length: 11}
-  quant: {resolution: parsimony-gene, use_knee: false}
 
-hash_matcher:
-  umi_threshold: 1
-  cb_max_hamming: 1
+# ── Guide assignment (v0.2.0+) ──
+# Remove this entire section to produce guide_matrix/ only.
+assignment:
+  guide_design: dual                  # single | dual | multi
+  methods:
+    - pgmm_em
 
-whitelist:
-  min_umi: 1000
-  min_genes: 500
+# ── Optional overrides ──
+# All sections below are optional — defaults are auto-derived.
 
-resources:
-  simpleaf_quant_threads: 12
-  simpleaf_index_threads: 4
-  hash_quant_threads: 4
+# Want to switch to HAM extraction?
+# guide_extraction:
+#   method: hash_matcher
+# hash_matcher:
+#   umi_threshold: 1
+#   cb_max_hamming: 1
+
+# Override auto-derived reference paths?
+# references:
+#   guide_fasta: /path/to/guides.fasta
+#   guide_t2g_2col: /path/to/t2g.tsv
+#   sgRNA_index_dir: /path/to/piscem_index/
+#   guide_hash: /path/to/guide_hash.pkl
+#   whitelist_dir: /path/to/whitelist_cache/
+
+# Override whitelist QC thresholds?
+# whitelist:
+#   min_umi: 1000
+#   min_genes: 500
+
+# Override resource limits?
+# resources:
+#   simpleaf_quant_threads: 12
+#   simpleaf_index_threads: 4
+#   hash_quant_threads: 4
 ```
 
 ### 2. Input data topology (`config/groups.yaml`)
@@ -500,29 +504,29 @@ Common Snakemake options:
 |-------|--------|-------|
 | sgRNA FASTQ | Paired FASTQ (R1 + R2), per lane | R1 = cell barcode + UMI, R2 = protospacer sequence |
 | GEX matrix | `.h5` / `.h5ad` / `.h5mu`, per lane | Used for cell barcode whitelist extraction |
-| Guide FASTA | One protospacer sequence per entry | Can be auto-generated from `guide_csv` via `feature_reference_adapter.py` |
-| Guide library CSV | Depends on `guide_design` (see [Guide Assignment](#guide-assignment)) | Needed for: (a) auto-generating FASTA + t2g, (b) dual/multi guide_design perturbation mapping |
-| Translation table | Feature ↔ GEX barcode mapping | 3′ chemistries only; auto-downloaded if not present |
+| Guide library CSV | See [Guide Assignment](#guide-assignment) for schema | Auto-generates FASTA + t2g + piscem index. Provides guide→gene mapping for assignment. |
 
-The workflow also auto-downloads 10x barcode whitelists from the teichlab
-`scg_lib_structs` mirror if not cached locally. The `3M-3pgex-may-2023`
-whitelist (3′ v4) has no public mirror and must be copied manually from a
-Cell Ranger ≥ 8.0.1 installation.
+All other references (guide FASTA, t2g, piscem index, HAM hash table, 10x
+whitelists, translation tables) are auto-generated or auto-downloaded by the
+workflow under `{out_dir}/refs/`. The `3M-3pgex-may-2023` whitelist (3′ v4)
+has no public mirror and must be copied manually from Cell Ranger ≥ 8.0.1.
 
 ### What the workflow produces
 
 ```
 {out_dir}/
-├── lane_XX/
-│   └── {quant_subdir}/           ← per-lane MEX (intermediate)
-├── merged/
-│   ├── merged_matrix.mtx.gz      ← cells × guides UMI count matrix
-│   ├── merged_barcodes.tsv.gz    ← cell barcodes (-L{NN} suffix)
-│   └── merged_features.tsv.gz    ← guide feature IDs
+├── refs/                          ← auto-generated references (FASTA, index, whitelists)
+├── lanes/
+│   └── lane_XX/
+│       └── {quant_subdir}/        ← per-lane MEX (intermediate)
+├── guide_matrix/
+│   ├── merged_matrix.mtx.gz       ← cells × guides UMI count matrix
+│   ├── merged_barcodes.tsv.gz     ← cell barcodes (-L{NN} suffix)
+│   └── merged_features.tsv.gz     ← guide feature IDs
 └── assignment/
     └── {method}/
-        ├── assignments.csv        ← unified schema (all guides, ranked)
-        └── perturbation_obs.csv   ← per-cell perturbation call
+        ├── assignments.csv         ← unified schema (all guides, ranked)
+        └── perturbation_obs.csv    ← per-cell perturbation call
 ```
 
 The workflow also generates intermediate artefacts during reference setup:

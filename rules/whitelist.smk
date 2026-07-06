@@ -15,8 +15,8 @@ rule extract_whitelist:
     input:
         h5 = lambda wildcards: GROUPS[wildcards.group]["gex_h5"],
     output:
-        wl_csv     = os.path.join(config["out_dir"], "{group}", "barcode_whitelist.csv"),
-        wl_noheader = os.path.join(config["out_dir"], "{group}", "barcode_whitelist_noheader.txt"),
+        wl_csv     = os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist.csv"),
+        wl_noheader = os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist_noheader.txt"),
     params:
         script    = os.path.join(config["proj_dir"], "scripts", "filter_barcodes.py"),
         min_umi   = config["whitelist"]["min_umi"],

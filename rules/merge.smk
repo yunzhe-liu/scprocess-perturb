@@ -12,17 +12,17 @@
 
 rule merge_matrices:
     input:
-        mtx  = [os.path.join(config["out_dir"], g, QUANT_OUT_SUBDIR, QUANT_MTX_FILE) for g in GROUPS],
-        rows = [os.path.join(config["out_dir"], g, QUANT_OUT_SUBDIR, QUANT_ROWS_FILE) for g in GROUPS],
-        cols = [os.path.join(config["out_dir"], g, QUANT_OUT_SUBDIR, QUANT_COLS_FILE) for g in GROUPS],
+        mtx  = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_MTX_FILE) for g in GROUPS],
+        rows = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_ROWS_FILE) for g in GROUPS],
+        cols = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_COLS_FILE) for g in GROUPS],
     output:
-        matrix   = os.path.join(config["out_dir"], "merged", "merged_matrix.mtx.gz"),
-        barcodes = os.path.join(config["out_dir"], "merged", "merged_barcodes.tsv.gz"),
-        features = os.path.join(config["out_dir"], "merged", "merged_features.tsv.gz"),
+        matrix   = os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
+        barcodes = os.path.join(config["out_dir"], "guide_matrix", "merged_barcodes.tsv.gz"),
+        features = os.path.join(config["out_dir"], "guide_matrix", "merged_features.tsv.gz"),
     params:
-        out_dir     = os.path.join(config["out_dir"], "merged"),
+        out_dir     = os.path.join(config["out_dir"], "guide_matrix"),
         prefix      = "merged",
-        lane_list   = os.path.join(config["out_dir"], "merged", ".lane_list.tsv"),
+        lane_list   = os.path.join(config["out_dir"], "guide_matrix", ".lane_list.tsv"),
         groups_repr = "[{items}]".format(items=", ".join(repr(g) for g in GROUPS)),
         result_dir  = config["out_dir"],
         quant_subdir = QUANT_OUT_SUBDIR,
@@ -53,7 +53,7 @@ result_dir = '{params.result_dir}'
 quant_subdir = '{params.quant_subdir}'
 with open('{params.lane_list}', 'w') as f:
     for g in groups:
-        quant_dir = os.path.join(result_dir, g, quant_subdir)
+        quant_dir = os.path.join(result_dir, 'lanes', g, quant_subdir)
         m = re.search(r'(\d+)$', g)
         suffix = f'-L{{m.group(1)}}' if m else f'-{{g}}'
         f.write(g + chr(9) + quant_dir + chr(9) + suffix + chr(10))

@@ -10,103 +10,73 @@ proj_dir: /path/to/scprocess-perturb
 out_dir: /path/to/results
 log_dir: /path/to/logs
 
-# ── Chemistry (v0.1.2+) ──
-# Single entry for all chemistry-dependent parameters. All downstream values
-# (simpleaf chemistry, whitelist, translation, HAM chemistry, UMI length) are
-# derived automatically from config/chemistry_spec.yaml.
+# ── Chemistry ──
+# 3v3 | 3v4 | 3LT | multiome | 5v1 | 5v2 | 5v3 | custom
 tenx_chemistry: "3v3"
-# Options: 3v3, 3v4, 3LT, 5v3, multiome, 5v1, 5v2, custom
 
-# ── Chemistry field overrides (optional) ──
-# Override individual fields from chemistry_spec.yaml without switching to
-# custom mode. Useful when you have standard hardware but a non-standard
-# parameter (e.g. a guide library with longer protospacers).
-# chemistry_overrides:
-#   umi_len: 11
-
-# ── Input data topology file ──
+# ── Input data topology ──
 # Path to the groups file that maps each 10x lane to its input files.
-# Relative paths are resolved from the scprocess-perturb repository root.
 groups_file: config/groups.yaml
 
-# ── Quantification method ──
+# ── Guide library ──
+# CSV used to generate FASTA + t2g for guide quantification and to map
+# assigned guide IDs to genes/constructs during assignment.
+guide_csv: /path/to/guide_library.csv
+
+# ── Guide extraction ──
 guide_extraction:
-  method: simpleaf                     # "simpleaf" | "hash_matcher"
+  method: simpleaf                    # simpleaf (default) | hash_matcher
 
-# ── Reference files ──
-references:
-  guide_fasta: /path/to/guides.fasta
-  guide_t2g_2col: /path/to/t2g.tsv
-  guide_hash: /path/to/guide_hash.pkl              # HAM only
-  sgRNA_index_dir: /path/to/piscem_index/           # simpleaf only
-  whitelist_dir: /path/to/whitelist_cache/
-  # Optional — provide guide_csv to auto-generate FASTA + t2g:
-  # guide_csv: /path/to/guide_library.csv
-  # Required if translation=true (3' chemistries):
-  # translation_table: /path/to/feature_barcode_translation.txt
-
-# ── simpleaf settings (used when method=simpleaf) ──
 simpleaf:
   af_home: /path/to/alevin-fry
-  index:
-    kmer_length: 15
-    minimizer_length: 11
-  quant:
-    resolution: parsimony-gene         # "parsimony-gene" | "cr-like"
-    use_knee: false                    # true = knee calling (no whitelist needed)
 
-# ── HAM settings (used when method=hash_matcher) ──
-hash_matcher:
-  umi_threshold: 1
-  cb_max_hamming: 1
+#   Optional overrides (defaults shown):
+#   index:
+#     kmer_length: 15
+#     minimizer_length: 11
+#   quant:
+#     resolution: parsimony-gene      # parsimony-gene | cr-like
+#     use_knee: false                 # true = knee calling (no whitelist needed)
 
-# ── Whitelist QC thresholds ──
-whitelist:
-  min_umi: 1000
-  min_genes: 500
+# ── Alternative extraction method: HAM ──
+# guide_extraction:
+#   method: hash_matcher
+# hash_matcher:
+#   umi_threshold: 1
+#   cb_max_hamming: 1
 
-# ── Assignment (v0.2.0+) ──
-# Post-extraction guide assignment. If this section is absent or methods is
-# empty, assignment is skipped and only the merged MEX trio is produced.
-#
-# guide_design:  dual   — dual-guide constructs (CRISPRi), top-2→pair_id
-#                single — single guide (CRISPRko), top-1->gene symbol
-#                dual   — dual-guide constructs (CRISPRi), top-2->pair_id
-#                multi  — N guides per construct, top-N->construct_id
-# guide_csv:     guide->gene/construct mapping CSV.
-#                single:  columns guide_id, gene (omit if guide_id == gene)
-#                dual:    columns sgID_A, sgID_B, gene, pair_id
-#                multi:   columns guide_id, gene, construct_id
-# methods:       list of methods to run (default: pgmm_em only).
-#                All method params have defaults derived from the Replogle 2022
-#                benchmark — override as needed for your data.
+# ── Optional: override auto-derived paths ──
+# All reference paths default to {out_dir}/refs/ unless set here.
+# The workflow auto-generates FASTA, t2g, piscem index, and downloads
+# 10x whitelists automatically from guide_csv.
+# references:
+#   guide_fasta: /path/to/guides.fasta
+#   guide_t2g_2col: /path/to/t2g.tsv
+#   sgRNA_index_dir: /path/to/piscem_index/
+#   guide_hash: /path/to/guide_hash.pkl
+#   whitelist_dir: /path/to/whitelist_cache/
+
+# ── Optional: whitelist QC ──
+# whitelist:
+#   min_umi: 1000
+#   min_genes: 500
+
+# ── Optional: resource limits ──
+# resources:
+#   simpleaf_quant_threads: 12
+#   simpleaf_index_threads: 4
+#   hash_quant_threads: 4
+
+# ── Guide assignment (v0.2.0+) ──
+# Remove this entire section to produce guide_matrix/ only.
 assignment:
-  guide_design: dual                # single | dual | multi
-  guide_csv: /path/to/guide_library.csv
-
+  guide_design: dual                  # single | dual | multi
   methods:
-    - pgmm_em                       # default — provides prob_gaussian confidence
-    # - umi_threshold                 # baseline — fastest, no model (default t=3)
-    # - fishash                      # alternative — Fisher test, needs R + fishash
-
-  # Per-method parameter overrides (all optional — defaults shown)
-  pgmm_em:
-    umi_threshold: 3
-    prob_threshold: 0.75
-    workers: 16
-    max_em_iter: 200
-
-  umi_threshold:
-    threshold: 3
-
-  fishash:
-    padj_cutoff: 0.05
-    padj_method: GS
-    min_count: 2
-    refit: 10
-
-# ── Resources ──
-resources:
-  simpleaf_quant_threads: 12
-  simpleaf_index_threads: 4
-  hash_quant_threads: 4
+    - pgmm_em
+  #   Optional overrides (defaults shown):
+  #   umi_threshold: 3
+  #   prob_threshold: 0.75
+  #   workers: 16
+  #   max_em_iter: 200
+  # - umi_threshold              # simple UMI >= threshold filter (default t=3)
+  # - fishash                    # Fisher exact test (needs R + fishash package)

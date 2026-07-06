@@ -19,8 +19,15 @@ Usage:
         --guide-design dual --guide-csv guide_library.csv --method pgmm_em
 """
 
-import argparse, csv, time
+import argparse, csv, gzip, os, time
 from collections import defaultdict
+
+
+def _smart_open(path, mode='rt'):
+    """Open a file, handling gzip transparently."""
+    if path.endswith('.gz'):
+        return gzip.open(path, mode)
+    return open(path, mode)
 
 
 CONFIDENCE_TIERS = {
@@ -65,7 +72,7 @@ def classify_confidence(method, score):
 def _expand_dual_csv(csv_path):
     """dual-guide CSV (sgID_A, sgID_B, gene, pair_id) -> {guide_id: (pid, gene)}."""
     guide_map = {}
-    with open(csv_path) as f:
+    with _smart_open(csv_path) as f:
         for row in csv.DictReader(f):
             gene = row.get("gene", "").strip()
             pid = (row.get("pair_id") or row.get("unique sgRNA pair ID", "")).strip()
@@ -83,7 +90,7 @@ def _load_single_or_multi_csv(csv_path):
     - multi  mode: construct_id column is required.
     """
     guide_map = {}
-    with open(csv_path) as f:
+    with _smart_open(csv_path) as f:
         for row in csv.DictReader(f):
             gid = row.get("guide_id", "").strip()
             gene = row.get("gene", "").strip()
