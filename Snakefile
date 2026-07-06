@@ -164,12 +164,21 @@ else:  # hash_matcher
 
 
 # ---- Final target ----
+# Extend rule all inputs with assignment targets when methods configured
+_assignment_methods = config.get("assignment", {}).get("methods", [])
+_assignment_targets = []
+for _m in _assignment_methods:
+    _base = os.path.join(config["out_dir"], "assignment", _m)
+    _assignment_targets.append(os.path.join(_base, "assignments.csv"))
+    _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
+
 rule all:
     input:
         os.path.join(config["out_dir"], "merged", "merged_matrix.mtx.gz"),
         os.path.join(config["out_dir"], "merged", "merged_barcodes.tsv.gz"),
         os.path.join(config["out_dir"], "merged", "merged_features.tsv.gz"),
-    
+        *_assignment_targets,
+
 
 # ---- Import rule modules ----
 include: "rules/reference.smk"
@@ -181,3 +190,6 @@ else:
     include: "rules/guide_quant.smk"
 
 include: "rules/merge.smk"
+
+if _assignment_methods:
+    include: "rules/assignment.smk"
