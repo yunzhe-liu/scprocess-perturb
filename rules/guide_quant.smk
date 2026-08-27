@@ -50,7 +50,7 @@ rule hash_guide_quant:
         out_dir        = os.path.join(config["out_dir"], "lanes", "{group}", "guide_quant"),
         umi_threshold  = config.get("hash_matcher", {}).get("umi_threshold", 1),
         cb_max_hamming = config.get("hash_matcher", {}).get("cb_max_hamming", 1),
-        # v0.1.2: chemistry resolved from _chemistry spec preferentially,
+        # chemistry resolved from _chemistry spec preferentially,
         # falling back to the raw hash_matcher.chemistry config value.
         ham_chemistry  = (config.get("_chemistry") or {}).get("ham_chemistry") or config.get("hash_matcher", {}).get("chemistry", "10xv3"),
         umi_len        = (config.get("_chemistry") or {}).get("umi_len") or (10 if config.get("hash_matcher", {}).get("chemistry", "10xv3") == "10xv2-5p" else 12),

@@ -14,7 +14,7 @@
 rule extract_whitelist:
     input:
         h5 = lambda wildcards: GROUPS[wildcards.group]["gex_h5"],
-        # v0.2.2: pull the auto-derived translation table into the DAG so it is
+        # pull the auto-derived translation table into the DAG so it is
         # downloaded on demand. Empty (no dependency) for chemistries that don't
         # translate (5') or when no translation table is configured.
         trans = (config["translation_table"]
@@ -28,7 +28,7 @@ rule extract_whitelist:
         min_umi   = config["whitelist"]["min_umi"],
         min_genes = config["whitelist"]["min_genes"],
         lock_yaml = os.path.join(config["proj_dir"], "envs", "scp_analysis.lock.yaml"),
-        # v0.1.2: translation controlled by _chemistry spec.
+        # translation controlled by _chemistry spec.
         # True for dual-oligo systems (3' v3, cs1/cs2 bead capture) where
         # GEX barcodes (TruSeq) differ from Feature barcodes (Nextera).
         # False for single-oligo systems (5' v1/v2, soluble RT primer).
@@ -105,7 +105,7 @@ print(f'Whitelist: {{len(barcodes)}} cells (≥{params.min_umi} UMI, ≥{params.
                 --min-genes {params.min_genes}
         fi
 
-        # v0.1.2: Barcode translation (TO→FROM: TruSeq→Nextera).
+        # Barcode translation (TO→FROM: TruSeq→Nextera).
         # Required for dual-oligo chemistries (3' v3) where GEX and Feature
         # libraries use different barcode formats on the same bead.
         # Skipped for single-oligo chemistries (5' v1/v2, soluble RT primer).

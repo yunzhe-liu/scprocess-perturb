@@ -43,12 +43,6 @@ for all standard 10x direct-capture chemistries.
                                      │
                                      ▼
                           perturbation_obs.csv
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │  downstream multimodal integration   │
-                    │  (external — join into AnnData/MuData) │
-                    └─────────────────────────────────────┘
 ```
 
 **Guide extraction** produces a per-lane (cells × guides) UMI count matrix in
@@ -555,17 +549,17 @@ scprocess-perturb/
 │   ├── merge.smk                 ← Per-lane merge + barcode translation
 │   └── assignment.smk            ← Guide assignment
 ├── scripts/
-│   ├── translate_barcodes.py     ← Feature ↔ GEX barcode translation
+│   ├── feature_reference_adapter.py ← Guide FASTA / t2g from CSV
 │   ├── build_guide_hash.py       ← HAM hash table builder
-│   ├── filter_barcodes.py        ← Barcode QC thresholds (h5 format)
-│   ├── feature_reference_adapter.py ← Guide FASTA / t2g generation from CSV
-│   ├── run_pgmm_em.py            ← PGMM EM assignment runner
-│   ├── run_umi_threshold.py      ← UMI threshold assignment runner
-│   ├── run_fishash.R             ← fishash assignment runner (R)
-│   ├── postprocess_fishash.py    ← standalone fishash top-K utility (not on the default path)
-│   ├── standardize_assignment.py ← Method-specific CSV → unified schema
-│   ├── make_perturbation_obs.py  ← Unified schema → per-cell perturbation call
-│   └── _legacy/                  ← quarantined scripts, not used by the workflow
+│   ├── filter_barcodes.py        ← Cell barcode QC (h5)
+│   ├── translate_barcodes.py     ← Feature ↔ GEX barcode translation
+│   ├── preprocess_cutadapt.sh    ← Optional R2 trimming (preprocess.trimmed)
+│   ├── parse_samples.py          ← groups.yaml helper for preprocessing
+│   ├── run_pgmm_em.py            ← pgmm_em assignment
+│   ├── run_umi_threshold.py      ← umi_threshold assignment
+│   ├── run_fishash.R             ← fishash assignment (R)
+│   ├── standardize_assignment.py ← Method CSV → unified schema
+│   └── make_perturbation_obs.py  ← Unified schema → per-cell call
 ├── envs/
 │   ├── simpleaf.lock.yaml
 │   └── scp_analysis.lock.yaml

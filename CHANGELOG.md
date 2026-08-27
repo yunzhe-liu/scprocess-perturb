@@ -9,10 +9,6 @@ Archival version history for scprocess-perturb.
   total order (the `gRNA` tie-break resolves the ~0.73% of cells with a tied top
   UMI). Pure reordering: no column values, retained set, or `guide_qc.csv`
   change. The redundant per-worker sort was removed.
-- **`docs/DECISIONS.md`:** design-decision log. First entry (D1) records the
-  deferred question of whether pgmm_em's per-cell top-1 should rank by
-  `prob_gaussian` (current) or `UMI_counts` — they disagree for ~9% of cells.
-  Consumers must not infer top-1 from `_raw_assignments.csv` row position.
 
 ### v0.2.4 — 2026-08-11
 
@@ -21,12 +17,8 @@ Archival version history for scprocess-perturb.
   to `monitoring.json` (matching `pgmm_em` / `fishash`); dropped hardcoded
   fallback paths from `build_guide_hash.py`; corrected the assignment-outputs
   section in the README (log location, `_raw_assignments.csv`).
-- **`scripts/_legacy/`:** quarantined 10 scripts that are not used by the
-  workflow (old analysis/param-sweep/merge helpers). They are retained here for
-  reference and can be removed later. `preprocess_cutadapt.sh` + `parse_samples.py`
-  (used by the `preprocess.trimmed` option), `postprocess_fishash.py` (standalone
-  utility), and `guide_matcher.py` + `umi_dedup_matrix.py` (documented in the SOP)
-  are kept in `scripts/`.
+- **Removed unused scripts:** old analysis / param-sweep / merge helpers no
+  longer used by the workflow.
 
 ### v0.2.3 — 2026-08-11
 
@@ -40,8 +32,6 @@ Archival version history for scprocess-perturb.
 - **Multi guide_design fix:** `make_perturbation_obs.py` previously fell back to
   top-1 for `multi` (it silently considered only one guide). It now considers all
   ranked guides per cell (`TOP_GUIDES["multi"] = None`).
-- **`postprocess_fishash.py`** is retained as a standalone utility, off the
-  default path.
 - Minor: simplified the dual-guide branch; refreshed stale docstrings.
 
 ### v0.2.2 — 2026-08-11

@@ -15,7 +15,7 @@ rule merge_matrices:
         mtx  = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_MTX_FILE) for g in GROUPS],
         rows = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_ROWS_FILE) for g in GROUPS],
         cols = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_COLS_FILE) for g in GROUPS],
-        # v0.2.2: pull the auto-derived translation table into the DAG (on-demand
+        # pull the auto-derived translation table into the DAG (on-demand
         # download). Empty for 5' chemistries / when no translation is configured.
         trans = (config["translation_table"]
                  if ((config.get("_chemistry") or {}).get("translation") and config.get("translation_table"))
@@ -32,7 +32,7 @@ rule merge_matrices:
         result_dir  = config["out_dir"],
         quant_subdir = QUANT_OUT_SUBDIR,
         quant_mtx    = QUANT_MTX_FILE,
-        # v0.1.2: prefer _chemistry.translation; fall back to legacy skip_translation
+        # prefer _chemistry.translation; fall back to legacy skip_translation
         skip_trans  = "true" if not (config.get("_chemistry") or {}).get("translation", not config.get("skip_translation", False)) else "false",
         trans_table = config.get("translation_table", ""),
     log:

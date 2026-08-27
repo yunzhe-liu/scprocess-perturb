@@ -1,16 +1,14 @@
 # ==============================================================================
-# guide_extraction — Main Snakefile Entry Point
+# scprocess-perturb — Snakefile
 # ==============================================================================
-# scPerturb-seq Guide Extraction Workflow
-#
-# Pipeline (scprocess is an external pre-processing step; its H5 output is a
-# direct input to this workflow):
+# Perturb-seq guide extraction (+ optional assignment). GEX matrices come from
+# an external pre-processing step and are a direct input.
 #   guide_fasta → sgRNA_index ────────────────────────┐
 #   gex_h5 (external) → extract_whitelist ────────────┤
-#   sgRNA_fastq ─────────────────────────→ sgRNA_quant → merge → merged MEX
+#   sgRNA_fastq ──────────→ sgRNA_quant → merge → merged MEX → assignment
 #
 # Usage:
-#   snakemake --cores 8          # local multi-core (default)
+#   snakemake --cores 8          # run
 #   snakemake -n                 # dry-run preview
 # ==============================================================================
 
@@ -28,7 +26,6 @@ BASEDIR = os.getcwd()
 configfile: "config/config.yaml"
 
 # ---- Load sample topology (GROUPS dict, available to all rules) ----
-# v0.1.2: samples file path can be overridden via config key.
 _groups_file = config.get("groups_file", os.path.join(BASEDIR, "config", "groups.yaml"))
 if not os.path.isabs(_groups_file):
     _groups_file = os.path.join(BASEDIR, _groups_file)
@@ -70,33 +67,21 @@ for gname, gcfg in GROUPS.items():
         gcfg["_sgRNA_r2_trimmed"] = []
 
 
-# ---- Chemistry resolution (v0.1.2+) ----
-# Load the single-source-of-truth chemistry specification and resolve
-# tenx_chemistry → all downstream parameters (af_chemistry, whitelist,
-# translation behaviour, geometry overrides, HAM chemistry, UMI length).
-#
-# Populates config["_chemistry"] for rules to consume.
-# Backfills legacy config keys for backward compatibility with configs
-# that lack a tenx_chemistry field (pre-v0.1.2).
+# ---- Chemistry resolution ----
+# Resolve tenx_chemistry → downstream parameters (af_chemistry, whitelist,
+# translation, geometry override, HAM chemistry, UMI length) into
+# config["_chemistry"] for rules to consume.
 _SPEC_PATH = os.path.join(BASEDIR, "config", "chemistry_spec.yaml")
 if not os.path.exists(_SPEC_PATH):
-    sys.exit(
-        "ERROR: config/chemistry_spec.yaml not found. "
-        "This file is required by scprocess-perturb >= 0.1.2.")
+    sys.exit("ERROR: config/chemistry_spec.yaml not found.")
 with open(_SPEC_PATH, "r") as f:
     _CHEMISTRY_SPEC = yaml.safe_load(f)
 
 
 def _resolve_chemistry(cfg):
-    """Resolve tenx_chemistry → downstream parameters.
-
-    Populates cfg["_chemistry"] with the resolved spec dict.
-    Backfills legacy config keys so pre-v0.1.2 configs continue working.
-    """
+    """Resolve tenx_chemistry into cfg["_chemistry"] and backfill legacy keys."""
     chem = cfg.get("tenx_chemistry", None)
     if chem is None:
-        # Legacy config — no tenx_chemistry field.
-        # Rules fall back to their existing config paths unchanged.
         cfg["_chemistry"] = None
         return
 
@@ -119,9 +104,7 @@ def _resolve_chemistry(cfg):
 
     cfg["_chemistry"] = spec
 
-    # ── Backfill legacy config paths ──
-
-    # skip_translation
+    # Backfill legacy config keys
     if "skip_translation" not in cfg:
         cfg["skip_translation"] = not spec.get("translation", True)
 
@@ -143,10 +126,8 @@ def _resolve_chemistry(cfg):
 _resolve_chemistry(config)
 
 
-# ---- Reference auto-derivation (v0.2.1+) ----
-# All reference paths fall back to {out_dir}/refs/ if not set by user.
-# This means users only need to provide guide_csv — FASTA, t2g, piscem index,
-# guide hash, and 10x whitelists are all auto-generated from it.
+# ---- Reference auto-derivation ----
+# Reference paths default to {out_dir}/refs/; users need only provide guide_csv.
 _refs = config.setdefault("references", {})
 _ref_dir = os.path.join(config["out_dir"], "refs")
 _refs.setdefault("guide_csv", config.get("guide_csv", ""))
@@ -156,19 +137,16 @@ _refs.setdefault("sgRNA_index_dir",   os.path.join(_ref_dir, "piscem_index"))
 _refs.setdefault("guide_hash",        os.path.join(_ref_dir, "guide_hash.pkl"))
 _refs.setdefault("whitelist_dir",     os.path.join(_ref_dir, "whitelist_cache"))
 
-# ---- Translation table auto-derivation (v0.2.2+) ----
-# Class A (3' dual-oligo) chemistries need a RNA<->Feature barcode translation
-# table at two points (whitelist TO->FROM, merge FROM->TO). Derive its path from
-# the resolved chemistry so it lands in whitelist_dir and is auto-downloaded by
-# the download_translation_table rule. Class B (5') has translation_file: null
-# and needs none. A user-set config["translation_table"] always wins.
+# ---- Translation table auto-derivation ----
+# Class A (3' dual-oligo) chemistries need a RNA<->Feature translation table;
+# derive its path into whitelist_dir (downloaded on demand). Class B (5') has
+# translation_file: null. A user-set config["translation_table"] wins.
 _chem_spec = config.get("_chemistry") or {}
 if _chem_spec.get("translation_file") and "translation_table" not in config:
     config["translation_table"] = os.path.join(
         _refs["whitelist_dir"], _chem_spec["translation_file"])
 
-# ---- Section defaults (v0.2.1+) ----
-# Entire sections can be omitted from config.yaml; defaults are applied here.
+# ---- Section defaults (any section may be omitted from config.yaml) ----
 _wl = config.setdefault("whitelist", {})
 _wl.setdefault("min_umi", 1000)
 _wl.setdefault("min_genes", 500)

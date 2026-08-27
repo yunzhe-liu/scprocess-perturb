@@ -448,14 +448,8 @@ def main():
     else:
         merged = merged.reindex(columns=base_cols + ["lpo", "lpo_pctl", "guide_Sg"])
 
-    # ── Canonical assignment order (deterministic) ──
-    # cell asc, UMI desc, gRNA asc. (cell, gRNA) is unique, so the gRNA tie-break
-    # makes (cell, UMI, gRNA) a total order — the row order is fully reproducible
-    # regardless of input order or worker chunking (kind="mergesort" is belt-and-
-    # suspenders). This is a pure reordering: column values, the retained set, and
-    # guide_qc are unchanged. NOTE: consumers must NOT infer top-1 from row
-    # position — pgmm_em's per-cell call is ranked by prob_gaussian downstream,
-    # which differs from UMI-order for ~9% of cells (see docs/DECISIONS.md).
+    # Canonical order: cell asc, UMI desc, gRNA asc. (cell, gRNA) is unique, so
+    # this is a total order (reproducible). Do not infer top-1 from row position.
     if len(merged) > 0:
         merged = merged.sort_values(
             ["cell", "UMI_counts", "gRNA"],

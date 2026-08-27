@@ -46,7 +46,7 @@ rule simpleaf_quant:
         out_dir    = os.path.join(config["out_dir"], "lanes", "{group}", "simpleaf_quant"),
         index_dir  = config["references"]["sgRNA_index_dir"],
         index_piscem_pref = config["references"]["sgRNA_index_dir"] + "/index/piscem_idx",
-        # v0.1.2: chemistry resolved from _chemistry spec (if available),
+        # chemistry resolved from _chemistry spec (if available),
         # with geometry_override taking precedence over the raw config value.
         chemistry  = (config.get("_chemistry") or {}).get("geometry_override") or config["simpleaf"]["quant"]["chemistry"],
         resolution = config["simpleaf"]["quant"]["resolution"],
