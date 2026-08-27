@@ -156,6 +156,17 @@ _refs.setdefault("sgRNA_index_dir",   os.path.join(_ref_dir, "piscem_index"))
 _refs.setdefault("guide_hash",        os.path.join(_ref_dir, "guide_hash.pkl"))
 _refs.setdefault("whitelist_dir",     os.path.join(_ref_dir, "whitelist_cache"))
 
+# ---- Translation table auto-derivation (v0.2.2+) ----
+# Class A (3' dual-oligo) chemistries need a RNA<->Feature barcode translation
+# table at two points (whitelist TO->FROM, merge FROM->TO). Derive its path from
+# the resolved chemistry so it lands in whitelist_dir and is auto-downloaded by
+# the download_translation_table rule. Class B (5') has translation_file: null
+# and needs none. A user-set config["translation_table"] always wins.
+_chem_spec = config.get("_chemistry") or {}
+if _chem_spec.get("translation_file") and "translation_table" not in config:
+    config["translation_table"] = os.path.join(
+        _refs["whitelist_dir"], _chem_spec["translation_file"])
+
 # ---- Section defaults (v0.2.1+) ----
 # Entire sections can be omitted from config.yaml; defaults are applied here.
 _wl = config.setdefault("whitelist", {})

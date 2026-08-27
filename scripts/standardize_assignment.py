@@ -34,8 +34,10 @@ METHOD_SORT = {
         "input_cols": ["cell", "gRNA", "UMI_counts"],
     },
     "fishash": {
-        # Pre-sorted by postprocess_fishash.py (log_pval ASC).
-        # Top-K is controlled by guide_design config (dual→2, single→1, multi→N).
+        # Fed the raw fishash CSV directly (no top-K truncation in the pipeline).
+        # All FDR-passing candidates are kept and ranked here by log_pval ASC
+        # (more negative = more significant); per-cell selection happens later
+        # in make_perturbation_obs.py.
         "sort_keys": [("log_pval", "asc")],
         "score_col": "log_pval",
         "score_type": "neg_log_pval",

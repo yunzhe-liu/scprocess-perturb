@@ -9,7 +9,8 @@ Supports three guide_design modes:
 
     single — 1 guide per perturbation (CRISPRko). top-1 -> gene symbol.
     dual   — 2 guides per construct (CRISPRi). top-2 -> construct pair_id.
-    multi  — N guides per construct. top-N -> construct_id.
+    multi  — N guides per construct. all assigned guides -> construct_id
+             (consensus; a disagreeing construct marks the cell ambiguous).
 
 The guide_csv format depends on guide_design (see --help for schemas).
 
@@ -49,8 +50,8 @@ CONFIDENCE_TIERS = {
 }
 
 # How many top guides to consider per cell for construct matching,
-# keyed by guide_design.  "multi" uses all available guides.
-TOP_GUIDES = {"single": 1, "dual": 2}
+# keyed by guide_design.  "multi" uses all available guides (None = no cap).
+TOP_GUIDES = {"single": 1, "dual": 2, "multi": None}
 
 
 def classify_confidence(method, score):
@@ -154,8 +155,10 @@ def main():
             print("Single-guide: no guide_csv (guide_id used as gene name)")
 
     # ---- Load assignments ----
+    # top_n = None means "all ranked guides for the cell" (multi guide_design).
     top_n = TOP_GUIDES.get(args.guide_design, 1)
-    print(f"Loading {args.input} (top-{top_n} per cell) ...", end=' ', flush=True)
+    top_label = "all" if top_n is None else f"top-{top_n}"
+    print(f"Loading {args.input} ({top_label} per cell) ...", end=' ', flush=True)
     cell_guides = defaultdict(list)
     with open(args.input) as f:
         for row in csv.DictReader(f):
@@ -163,7 +166,7 @@ def main():
             guide = row.get("guide_id", "").strip()
             rank = int(row.get("rank", 0))
             score = float(row.get("score", 0))
-            if cell and guide and rank <= top_n:
+            if cell and guide and (top_n is None or rank <= top_n):
                 cell_guides[cell].append((rank, guide, score))
 
     for cell in cell_guides:
@@ -215,16 +218,14 @@ def main():
                     if cid:
                         cids.append(cid)
 
-            if len(cids) >= 2 and len(set(cids)) == 1:
-                perturbation = cids[0]
-                n_guides_used = len(cids)
-            elif len(cids) >= 1 and len(set(cids)) == 1:
-                perturbation = cids[0]
-                n_guides_used = len(cids)
-            elif len(cids) == 0:
+            if len(cids) == 0:
                 perturbation = "NA"
                 n_guides_used = 0
                 n_na += 1
+            elif len(set(cids)) == 1:
+                # top-2 guides map to the same construct
+                perturbation = cids[0]
+                n_guides_used = len(cids)
             else:
                 perturbation = "ambiguous_pair"
                 n_guides_used = len(guides)
@@ -240,7 +241,12 @@ def main():
             })
 
         else:  # multi
-            # ---- multi: top-N guides -> same construct? ----
+            # ---- multi: do all assigned guides map to one construct? ----
+            # `guides` holds every ranked guide for the cell (top_n = None).
+            # Consensus is strict: a single disagreeing construct marks the cell
+            # ambiguous_construct. For high-recall methods (e.g. fishash, which
+            # keeps many guides per cell) this is deliberately conservative and
+            # is the main knob to calibrate per dataset.
             cids = []
             n_with_cid = 0
             for _, g, _ in guides:

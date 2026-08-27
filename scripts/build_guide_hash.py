@@ -140,6 +140,6 @@ def build_guide_hash(fasta_path: str, hash_path: str) -> dict:
 
 
 if __name__ == '__main__':
-    fasta = sys.argv[1] if len(sys.argv) > 1 else '/data/yunzliu/references/guides.fasta'
-    output = sys.argv[2] if len(sys.argv) > 2 else '/data/yunzliu/references/guide_hash.pkl'
-    build_guide_hash(fasta, output)
+    if len(sys.argv) != 3:
+        sys.exit("Usage: build_guide_hash.py <guides.fasta> <guide_hash.pkl>")
+    build_guide_hash(sys.argv[1], sys.argv[2])

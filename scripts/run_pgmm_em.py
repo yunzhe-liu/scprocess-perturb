@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
 """
-PGMM assignment — Poisson-Gaussian Mixture Model via EM (MONITORED VERSION).
+PGMM assignment — Poisson-Gaussian Mixture Model via MAP-EM.
 
-Identical EM algorithm to run_em_assignment.py, with additional monitoring:
-  - Wall-clock time per stage
-  - Peak RSS memory
-  - System CPU count
-  - Per-worker timing breakdown
-  - Monitoring metadata saved as JSON alongside assignments.
+Fits a 2-component Poisson-Gaussian mixture per guide on log2(UMI) and assigns
+every (cell, guide) pair with UMI >= threshold AND P(Gaussian) >= threshold.
+
+The M-step is Maximum-A-Posteriori with two weak priors:
+  lambda ~ LogNormal(log(2), 1.0)   anchors the background rate low but non-zero
+  w      ~ Dirichlet([0.9, 0.1])    weak background-dominant prior
+The priors keep the per-guide background estimate well-posed: without them it
+degenerates to zero on sparse non-zero data. With them the fit holds a genuine
+non-zero background (lambda ~ 0.01-0.04) and a background-dominant mixture,
+giving a selective, clean retained assignment set. Init, the E-step, restarts
+and the lambda<mu constraint are standard EM.
+
+A post-fit confidence layer adds three columns (purely additive — it never enters
+the E-step, gate, lambda<mu, restarts or sort, so the base columns are unchanged):
+  lpo       continuous-relaxation log-odds, per-guide-calibrated confidence scale
+  lpo_pctl  within-guide percentile rank of lpo (cross-guide-comparable, [0,1])
+  guide_Sg  per-guide separability S_g = (mu-lambda)/sigma, broadcast to each call
+Plus a sidecar guide_qc.csv (gRNA, n_cells, lambda, mu, sigma, w0, w1, S_g) and a
+monitoring JSON (per-stage wall time, peak RSS, per-worker timing).
 
 Usage:
-  python run_em_assignment_monitored.py \
-      --input  /path/to/merged/ \
-      --output /path/to/05_pgmm_em_assignment/{tool}/ \
-      --tool-name cellranger \
-      [--umi-threshold 3] [--prob-threshold 0.75] [--workers 16]
+  python run_pgmm_em.py \
+      --input  /path/to/guide_matrix/ \
+      --output /path/to/assignment/pgmm_em/_raw_assignments.csv \
+      [--umi-threshold 1] [--prob-threshold 0.75] [--workers 16] [--max-em-iter 200]
 """
 
 import argparse, os, sys, gzip, time, json, platform, multiprocessing
@@ -23,6 +35,7 @@ import numpy as np
 import pandas as pd
 import scipy.io, scipy.sparse
 from scipy.stats import poisson, norm
+from scipy.special import gammaln
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -97,11 +110,21 @@ def get_system_info():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EM: 2-component Poisson-Gaussian mixture on log2(UMI)
+# MAP-EM: 2-component Poisson-Gaussian mixture on log2(UMI)
+# The M-step is Maximum-A-Posteriori with two weak priors:
+#   lambda ~ LogNormal(log(2), 1.0)   anchor background low but non-zero
+#   w      ~ Dirichlet([0.9, 0.1])    weak background-dominant prior
+# Init, the E-step, restarts and the lambda<mu constraint are standard EM.
 # ══════════════════════════════════════════════════════════════════════════════
+# Prior hyperparameters (module-level so the confidence layer stays in sync).
+_LAM_PRIOR_MU = np.log(2.0)          # ≈ 0.693
+_LAM_PRIOR_SIGMA = 1.0
+_DIR_ALPHA = np.array([0.9, 0.1])    # background-heavy
+
+
 def em_poisson_gaussian(data, max_iter=200, tol=1e-4, n_init=5):
     """
-    EM for 2-component Poisson-Gaussian mixture on log2(non-zero UMI).
+    MAP-EM for a 2-component Poisson-Gaussian mixture on log2(non-zero UMI).
 
     Constraint: Poisson mean < Gaussian mean (background < signal).
 
@@ -142,14 +165,29 @@ def em_poisson_gaussian(data, max_iter=200, tol=1e-4, n_init=5):
             if s0 < 1e-6 or s1 < 1e-6:
                 break
 
-            # M-step
-            w = np.array([s0 / N, s1 / N])
-            lam = np.average(data, weights=r0)
+            # MAP M-step
+            # w: Dirichlet(alpha) MAP  ->  (s + alpha - 1) / (N + Sum(alpha) - 2)
+            w = np.array([s0 + _DIR_ALPHA[0] - 1.0, s1 + _DIR_ALPHA[1] - 1.0])
+            w /= w.sum()
+            # lambda: geometric shrink of the MLE toward the LogNormal prior mean.
+            #         prior_weight -> 0 as the background support (s0) grows, so
+            #         more data means the data dominates the prior.
+            lam_mle = np.average(data, weights=r0)
+            if lam_mle > 0:
+                log_lam_mle = np.log(max(lam_mle, 1e-6))
+                prior_weight = 1.0 / (1.0 + s0 * _LAM_PRIOR_SIGMA ** 2)
+                lam = max(np.exp(prior_weight * _LAM_PRIOR_MU
+                                 + (1.0 - prior_weight) * log_lam_mle), 1e-6)
+            else:
+                lam = 1e-6
             mu = np.average(data, weights=r1)
             sigma = max(np.sqrt(np.average((data - mu) ** 2, weights=r1)), 0.05)
 
-            # log-likelihood
+            # log-posterior (log-likelihood + log-prior) for fair restart comparison
             ll = np.sum(np.log(w[0] * p_pois + w[1] * p_gauss + 1e-300))
+            ll += ((_DIR_ALPHA[0] - 1.0) * np.log(w[0])
+                   + (_DIR_ALPHA[1] - 1.0) * np.log(w[1]))
+            ll -= 0.5 * ((np.log(max(lam, 1e-6)) - _LAM_PRIOR_MU) / _LAM_PRIOR_SIGMA) ** 2
             if abs(ll - prev_ll) < tol:
                 converged = True
                 break
@@ -167,6 +205,24 @@ def em_poisson_gaussian(data, max_iter=200, tol=1e-4, n_init=5):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Confidence layer (post-fit, additive only). Computed from the already-fitted
+# per-guide (w0, w1, lambda, mu, sigma). Never enters the E-step / gate / lambda<mu
+# / sort, so the base assignment columns are unchanged; these are new columns only.
+#   lpo(cell,guide) = (log w1 + normlogpdf(y, mu, sigma))
+#                   - (log w0 + y*log(lambda) - lambda - lgamma(y+1))  # continuous Poisson log-pmf
+#   S_g = (mu - lambda)/sigma  (per-guide separability; low => components unseparated)
+# NA (nan) where lambda<=0, sigma<=0, w<=0, or lpo non-finite — never a large number.
+# ══════════════════════════════════════════════════════════════════════════════
+def _compute_lpo(y, lam, mu, sigma, w0, w1):
+    if not (lam > 0 and sigma > 0 and w0 > 0 and w1 > 0):
+        return np.full(len(y), np.nan)
+    log_num = np.log(w1) + norm.logpdf(y, mu, sigma)
+    log_den = np.log(w0) + y * np.log(lam) - lam - gammaln(y + 1.0)
+    lpo = log_num - log_den
+    return np.where(np.isfinite(lpo), lpo, np.nan)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Per-chunk worker
 # ══════════════════════════════════════════════════════════════════════════════
 def _worker(args):
@@ -175,6 +231,7 @@ def _worker(args):
 
     t0 = time.time()
     records = []
+    guide_rows = []   # per-guide fit params (confidence layer + guide_qc sidecar)
     stats = {"ok": 0, "fail": 0, "total_guides": 0}
     end_g = min(start_g + step, mtx_csc.shape[1])
 
@@ -194,29 +251,37 @@ def _worker(args):
             stats["fail"] += 1
             continue
         w, lam, mu, sigma, _ = result
+        w0, w1 = float(w[0]), float(w[1])
         stats["ok"] += 1
 
-        # P(Gaussian | UMI)
+        # P(Gaussian | UMI) — gate-consistent quantity (integer-rounded Poisson pmf)
         p_pois = poisson.pmf(np.round(log_data).astype(int), lam) + 1e-300
         p_gauss = norm.pdf(log_data, mu, sigma) + 1e-300
-        prob_gauss = w[1] * p_gauss / (w[0] * p_pois + w[1] * p_gauss)
+        prob_gauss = w1 * p_gauss / (w0 * p_pois + w1 * p_gauss)
 
-        for cell_i, umi, prob in zip(col.indices, col.data, prob_gauss):
-            records.append((barcodes[int(cell_i)], guide_name, int(umi), float(prob)))
+        # Confidence layer (additive; does not affect base columns or the gate)
+        lpo_arr = _compute_lpo(log_data, lam, mu, sigma, w0, w1)
+        guide_rows.append((guide_name, len(data), lam, mu, sigma, w0, w1,
+                           (mu - lam) / sigma if sigma > 0 else np.nan))
+
+        for cell_i, umi, prob, lp in zip(col.indices, col.data, prob_gauss, lpo_arr):
+            records.append((barcodes[int(cell_i)], guide_name, int(umi),
+                            float(prob), float(lp)))
 
     # ── Hard filters + flags ──
-    df = pd.DataFrame(records, columns=["cell", "gRNA", "UMI_counts", "prob_gaussian"])
+    df = pd.DataFrame(records,
+                      columns=["cell", "gRNA", "UMI_counts", "prob_gaussian", "lpo"])
     df["pass_umi_filter"] = df["UMI_counts"] >= umi_th
     df["pass_prob_filter"] = df["prob_gaussian"] >= prob_th
     before_filter = len(df)
     df = df[df["pass_umi_filter"] & df["pass_prob_filter"]]
-    df = df.sort_values(["cell", "prob_gaussian"], ascending=[True, False])
+    # (no per-worker sort: the merged output is sorted canonically in main)
 
     stats["worker_wall_s"] = round(time.time() - t0, 2)
     stats["records_before_filter"] = before_filter
     stats["records_after_filter"] = len(df)
 
-    return df, stats
+    return df, stats, guide_rows
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -228,7 +293,7 @@ def main():
     )
     parser.add_argument("--input", required=True, help="Path to merged MEX directory")
     parser.add_argument("--output", required=True, help="Output CSV path")
-    parser.add_argument("--umi-threshold", type=int, default=3)
+    parser.add_argument("--umi-threshold", type=int, default=1)
     parser.add_argument("--prob-threshold", type=float, default=0.75)
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--max-em-iter", type=int, default=200)
@@ -327,7 +392,7 @@ def main():
     worker_records_after = []
     tf = 0  # total fit OK
     tfl = 0  # total fit failed
-    for _, stats in results:
+    for _, stats, _ in results:
         tf += stats["ok"]
         tfl += stats["fail"]
         worker_wall_times.append(stats.get("worker_wall_s", 0))
@@ -363,12 +428,50 @@ def main():
     t0 = time.time()
     mem_before = get_memory_rss_mb()
 
-    all_dfs = [df for df, _ in results if len(df) > 0]
-    merged = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame(
-        columns=["cell", "gRNA", "UMI_counts", "prob_gaussian",
-                 "pass_umi_filter", "pass_prob_filter"])
+    all_dfs = [df for df, _, _ in results if len(df) > 0]
+    guide_rows_all = [r for _, _, gr in results for r in gr]
+    base_cols = ["cell", "gRNA", "UMI_counts", "prob_gaussian",
+                 "pass_umi_filter", "pass_prob_filter"]
+    merged = pd.concat(all_dfs, ignore_index=True) if all_dfs else \
+        pd.DataFrame(columns=base_cols + ["lpo"])
+
+    # ── Confidence layer columns (additive; base columns and their order unchanged) ──
+    # lpo_pctl = within-guide percentile rank of lpo (the only cross-guide-comparable
+    # form). guide_Sg = per-guide separability broadcast to each call.
+    n_lpo_na = 0
+    if len(merged) > 0:
+        merged["lpo_pctl"] = merged.groupby("gRNA")["lpo"].rank(pct=True)
+        sg_map = {r[0]: r[7] for r in guide_rows_all}
+        merged["guide_Sg"] = merged["gRNA"].map(sg_map)
+        merged = merged[base_cols + ["lpo", "lpo_pctl", "guide_Sg"]]
+        n_lpo_na = int(merged["lpo"].isna().sum())
+    else:
+        merged = merged.reindex(columns=base_cols + ["lpo", "lpo_pctl", "guide_Sg"])
+
+    # ── Canonical assignment order (deterministic) ──
+    # cell asc, UMI desc, gRNA asc. (cell, gRNA) is unique, so the gRNA tie-break
+    # makes (cell, UMI, gRNA) a total order — the row order is fully reproducible
+    # regardless of input order or worker chunking (kind="mergesort" is belt-and-
+    # suspenders). This is a pure reordering: column values, the retained set, and
+    # guide_qc are unchanged. NOTE: consumers must NOT infer top-1 from row
+    # position — pgmm_em's per-cell call is ranked by prob_gaussian downstream,
+    # which differs from UMI-order for ~9% of cells (see docs/DECISIONS.md).
+    if len(merged) > 0:
+        merged = merged.sort_values(
+            ["cell", "UMI_counts", "gRNA"],
+            ascending=[True, False, True],
+            kind="mergesort",
+        ).reset_index(drop=True)
+
     out_csv = args.output
     merged.to_csv(out_csv, index=False)
+
+    # Per-guide QC sidecar (fit-param byproduct; S_g diagnostic — no cutoff applied)
+    if guide_rows_all:
+        qc = pd.DataFrame(guide_rows_all,
+                          columns=["gRNA", "n_cells", "lam", "mu", "sigma",
+                                   "w0", "w1", "S_g"])
+        qc.to_csv(os.path.join(out_dir, "guide_qc.csv"), index=False)
 
     stage_elapsed = time.time() - t0
     mem_after = get_memory_rss_mb()
@@ -410,6 +513,7 @@ def main():
         "cells_ge3_guides": int((gpc >= 3).sum()) if na > 0 else 0,
         "umi_median": float(um),
         "prob_gaussian_median": float(pm),
+        "lpo_na": int(n_lpo_na),
     }
 
     # ── Save monitoring JSON ──

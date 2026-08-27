@@ -11,3 +11,7 @@ config/samples_papalexi.yaml
 
 # Backup files
 *.bak
+
+# Python bytecode
+__pycache__/
+*.pyc

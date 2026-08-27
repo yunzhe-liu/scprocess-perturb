@@ -15,6 +15,11 @@ rule merge_matrices:
         mtx  = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_MTX_FILE) for g in GROUPS],
         rows = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_ROWS_FILE) for g in GROUPS],
         cols = [os.path.join(config["out_dir"], "lanes", g, QUANT_OUT_SUBDIR, QUANT_COLS_FILE) for g in GROUPS],
+        # v0.2.2: pull the auto-derived translation table into the DAG (on-demand
+        # download). Empty for 5' chemistries / when no translation is configured.
+        trans = (config["translation_table"]
+                 if ((config.get("_chemistry") or {}).get("translation") and config.get("translation_table"))
+                 else []),
     output:
         matrix   = os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
         barcodes = os.path.join(config["out_dir"], "guide_matrix", "merged_barcodes.tsv.gz"),
@@ -29,7 +34,7 @@ rule merge_matrices:
         quant_mtx    = QUANT_MTX_FILE,
         # v0.1.2: prefer _chemistry.translation; fall back to legacy skip_translation
         skip_trans  = "true" if not (config.get("_chemistry") or {}).get("translation", not config.get("skip_translation", False)) else "false",
-        trans_table = config.get("translation_table", "/data/yunzliu/scdata/cellranger_ref/cellranger_whitelist_translation_3v3.txt"),
+        trans_table = config.get("translation_table", ""),
     log:
         os.path.join(config["log_dir"], "merge", "merge.log"),
     threads: 1

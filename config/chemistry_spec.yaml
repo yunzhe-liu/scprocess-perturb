@@ -13,6 +13,9 @@
 #   translation        — whether Feature↔GEX barcode translation is needed
 #                        (True for dual-oligo systems like cs1/cs2 bead capture;
 #                         False for single-oligo systems like soluble RT primer)
+#   translation_file   — RNA↔Feature translation table filename (auto-downloaded
+#                        into whitelist_dir; Snakefile derives config["translation_table"]
+#                        from it). null for single-oligo (5') chemistries.
 #   geometry_override  — explicit piscem geometry string, bypassing __builtin handler
 #                        (null = use af_chemistry's default geometry)
 #   ham_chemistry      — HAM chemistry name (maps to CHEMISTRY_CONFIGS in HAM)
@@ -27,6 +30,7 @@
   whitelist: "3M-february-2018.txt"
   expected_ori: "fw"
   translation: true
+  translation_file: "translation_3M-february-2018.txt"
   geometry_override: null
   ham_chemistry: "10xv3"
   umi_len: 12
@@ -36,6 +40,7 @@
   whitelist: "3M-3pgex-may-2023.txt"
   expected_ori: "fw"
   translation: true
+  translation_file: "translation_3M-3pgex-may-2023.txt"
   geometry_override: null
   ham_chemistry: "10xv3"
   umi_len: 12
@@ -45,6 +50,7 @@
   whitelist: "3M-february-2018.txt"
   expected_ori: "fw"
   translation: true
+  translation_file: "translation_3M-february-2018.txt"
   geometry_override: null
   ham_chemistry: "10xv3"
   umi_len: 12
@@ -54,6 +60,7 @@ multiome:
   whitelist: "3M-february-2018.txt"
   expected_ori: "fw"
   translation: true
+  translation_file: "translation_3M-february-2018.txt"
   geometry_override: null
   ham_chemistry: "10xv3"
   umi_len: 12
@@ -65,6 +72,7 @@ multiome:
   whitelist: "737K-august-2016.txt"
   expected_ori: "rc"
   translation: false
+  translation_file: null
   geometry_override: "1{b[16]u[10]x:}2{r:}"
   ham_chemistry: "10xv2-5p"
   umi_len: 10
@@ -74,6 +82,7 @@ multiome:
   whitelist: "737K-august-2016.txt"
   expected_ori: "rc"
   translation: false
+  translation_file: null
   geometry_override: "1{b[16]u[10]x:}2{r:}"
   ham_chemistry: "10xv2-5p"
   umi_len: 10
@@ -83,6 +92,7 @@ multiome:
   whitelist: "3M-5pgex-jan-2023.txt"
   expected_ori: "rc"
   translation: false
+  translation_file: null
   geometry_override: "1{b[16]u[12]x:}2{r:}"
   ham_chemistry: "10xv2-5p-12umi"
   umi_len: 12

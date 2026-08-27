@@ -14,6 +14,12 @@
 rule extract_whitelist:
     input:
         h5 = lambda wildcards: GROUPS[wildcards.group]["gex_h5"],
+        # v0.2.2: pull the auto-derived translation table into the DAG so it is
+        # downloaded on demand. Empty (no dependency) for chemistries that don't
+        # translate (5') or when no translation table is configured.
+        trans = (config["translation_table"]
+                 if ((config.get("_chemistry") or {}).get("translation") and config.get("translation_table"))
+                 else []),
     output:
         wl_csv     = os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist.csv"),
         wl_noheader = os.path.join(config["out_dir"], "lanes", "{group}", "barcode_whitelist_noheader.txt"),

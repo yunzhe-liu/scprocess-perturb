@@ -10,13 +10,17 @@
 #   umi_threshold  — Simple UMI threshold (default t=3; fastest, no model)
 #   fishash        — One-sided Fisher exact test with FDR control
 #
+# No top-K truncation happens in the pipeline: each method emits all candidates
+# that pass its own filter, standardize_assignment.py ranks them into the unified
+# schema, and make_perturbation_obs.py applies the guide_design reduction.
+#
 # Config keys used:
 #   config["assignment"]["methods"]            — list of method names to run
 #   config["assignment"]["guide_design"]       — "single" | "dual" | "multi"
 #   config["assignment"]["guide_csv"]          — guide->gene/construct mapping CSV
 #   config["assignment"][method]               — per-method parameter overrides
 #
-# Input:  {out_dir}/merged/merged_{matrix,barcodes,features}.mtx.gz
+# Input:  {out_dir}/guide_matrix/merged_{matrix,barcodes,features}
 # Output: {out_dir}/assignment/{method}/assignments.csv
 #         {out_dir}/assignment/{method}/perturbation_obs.csv
 # ==============================================================================
@@ -28,14 +32,21 @@ SCRIPTS = os.path.join(config["proj_dir"], "scripts")
 # ---- Method registry -------------------------------------------------------
 # Each method defines:
 #   runner              — shell command to execute
-#   postprocess_post    — if True, run postprocess_fishash.py after runner
 #   default_params      — fallback params if not specified in config
+#
+# All methods write a raw per-(cell, guide) CSV with every candidate that passes
+# the method's own filter (no top-K truncation in the pipeline). Ranking and
+# per-cell selection are deferred: standardize_assignment.py ranks all candidates
+# into the unified schema, and make_perturbation_obs.py applies the guide_design
+# reduction. This keeps the three methods symmetric and preserves the full
+# fishash result (which is multi-guide-per-cell by construction) for downstream
+# analysis, rather than baking an irreversible top-K choice into the output.
 
 METHODS = {
     "pgmm_em": {
         "runner": f"python3 {SCRIPTS}/run_pgmm_em.py",
         "default_params": {
-            "umi_threshold": 3,
+            "umi_threshold": 1,
             "prob_threshold": 0.75,
             "workers": 16,
             "max_em_iter": 200,
@@ -49,7 +60,6 @@ METHODS = {
     },
     "fishash": {
         "runner": f"Rscript {SCRIPTS}/run_fishash.R",
-        "postprocess_post": True,
         "default_params": {
             "padj_cutoff": 0.05,
             "padj_method": "GS",
@@ -61,10 +71,6 @@ METHODS = {
 
 SELECTED = config.get("assignment", {}).get("methods", ["pgmm_em"])
 GUIDE_DESIGN = config.get("assignment", {}).get("guide_design", "single")
-
-# fishash top-K: controlled by guide_design (dual/multi -> keep more guides
-# for construct matching; standardize_assignment.py ranks all of them)
-_TOP_K = {"single": 1, "dual": 2, "multi": 4}.get(GUIDE_DESIGN, 2)
 
 
 def _method_flags(method_name):
@@ -101,12 +107,8 @@ rule run_assignment:
         out_dir      = os.path.join(config["out_dir"], "assignment", "{method}"),
         raw_csv      = os.path.join(config["out_dir"], "assignment", "{method}",
                                     "_raw_assignments.csv"),
-        raw_topk_csv = os.path.join(config["out_dir"], "assignment", "{method}",
-                                    "_raw_assignments_topk.csv"),
         runner       = lambda w: METHODS[w.method]["runner"],
-        needs_post   = lambda w: METHODS[w.method].get("postprocess_post", False),
         method_flags = lambda w: _method_flags(w.method),
-        top_k        = _TOP_K,
     log:
         os.path.join(config["log_dir"], "assignment", "{method}.log"),
     threads: 1
@@ -115,26 +117,15 @@ rule run_assignment:
         mkdir -p "{params.out_dir}"
         exec &> {log}
 
-        # Step 1: Run assignment method -> raw CSV
+        # Step 1: Run assignment method -> raw per-(cell, guide) CSV (all candidates)
         {params.runner} \
             --input  "{params.mex_dir}" \
             --output "{params.raw_csv}" \
             {params.method_flags}
 
-        # Step 2: fishash post-processing (mandatory top-K extraction)
-        if [ "{params.needs_post}" = "True" ]; then
-            python3 {SCRIPTS}/postprocess_fishash.py \
-                --input  "{params.raw_csv}" \
-                --output "{params.raw_topk_csv}" \
-                --top-k  "{params.top_k}"
-            STAGED_CSV="{params.raw_topk_csv}"
-        else
-            STAGED_CSV="{params.raw_csv}"
-        fi
-
-        # Step 3: Standardize -> unified schema
+        # Step 2: Standardize -> unified schema (ranks all candidates per cell)
         python3 {SCRIPTS}/standardize_assignment.py \
-            --input  "$STAGED_CSV" \
+            --input  "{params.raw_csv}" \
             --output "{output.csv}" \
             --method "{params.method}"
     """

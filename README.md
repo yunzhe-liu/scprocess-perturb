@@ -169,11 +169,35 @@ merged MEX trio is produced.
 
 | Method | Description | Strengths | Script |
 |--------|-------------|-----------|--------|
-| `pgmm_em` *(default)* | Poisson-Gaussian Mixture Model via EM. 2-component fit per guide on log₂(UMI); assigns all (cell, guide) pairs with UMI ≥ 3 AND P(Gaussian) ≥ 0.75. | Provides calibrated confidence score (`prob_gaussian`); fast (~21s for 600k×4.5k); dual-guide compatible. | `run_pgmm_em.py` |
+| `pgmm_em` *(default)* | Poisson-Gaussian Mixture Model via **MAP-EM**. 2-component fit per guide on log₂(UMI) with weak priors (LogNormal on λ, Dirichlet on w) that stop the background rate collapsing to zero; assigns all (cell, guide) pairs with UMI ≥ 1 AND P(Gaussian) ≥ 0.75. | Calibrated confidence (`prob_gaussian`) plus an additive confidence layer (`lpo`, `lpo_pctl`, `guide_Sg`) and a per-guide `guide_qc.csv`; fast; dual-guide compatible. | `run_pgmm_em.py` |
 | `umi_threshold` | Fixed integer UMI threshold (default t=3). No statistical model — all pairs with UMI ≥ threshold are assigned. | Fastest; no model assumptions; predictable behaviour. | `run_umi_threshold.py` |
-| `fishash` | One-sided Fisher exact test on the (guides × cells) contingency table, with iterative Simpson's paradox correction and Guo & Sarkar FDR control. | No parametric assumptions; rigorous FDR; maximum cell recovery. | `run_fishash.R` + `postprocess_fishash.py` |
+| `fishash` | One-sided Fisher exact test on the (guides × cells) contingency table, with iterative Simpson's paradox correction and Guo & Sarkar FDR control. | No parametric assumptions; rigorous FDR; maximum cell recovery. | `run_fishash.R` |
 
 All parameters are configurable with sensible defaults.
+
+> **`pgmm_em` uses MAP-EM.** The M-step is Maximum-A-Posteriori with two weak
+> priors — `λ ~ LogNormal(log 2, 1.0)` and `w ~ Dirichlet(0.9, 0.1)`. The priors
+> keep the per-guide background estimate well-posed: without them it degenerates
+> to zero on sparse data. With them the fit holds a genuine non-zero background
+> (`λ ≈ 0.01–0.04`) and a background-dominant mixture, giving a selective, clean
+> retained assignment set. Init, the E-step, restarts, the λ<μ constraint and the
+> `P(Gaussian) ≥ threshold` gate are standard EM. The `UMI ≥ 1` pre-filter is
+> deliberate: the per-guide fit provides an *adaptive* threshold — a UMI of 1–2
+> sitting above a weakly-expressed guide's own background is kept, while
+> ambient-level UMI on an abundant guide is rejected by that guide's own model.
+>
+> A post-fit **confidence layer** appends three columns to the raw pgmm_em output
+> (`_raw_assignments.csv`) — purely additive, with no effect on which pairs are
+> assigned or on their order: `lpo` (continuous-relaxation log-odds, a
+> per-guide-calibrated confidence scale), `lpo_pctl` (within-guide percentile rank
+> of `lpo`, the only cross-guide-comparable form, ∈ [0,1]), and `guide_Sg`
+> (per-guide separability `S_g = (μ−λ)/σ` broadcast to each call). A sidecar
+> `guide_qc.csv` (`gRNA, n_cells, λ, μ, σ, w0, w1, S_g`) carries per-guide fit
+> diagnostics. `standardize_assignment.py` reads only the base columns, so the
+> unified schema and per-cell calls are unaffected. Note: `guide_Sg` is the
+> genuinely UMI-orthogonal signal (a property of the fit, not of any cell's UMI);
+> `lpo`/`lpo_pctl` are calibrated scores that carry no per-cell information beyond
+> UMI, and are provided as diagnostics with no cutoff applied.
 
 ### Quick configuration
 
@@ -198,7 +222,7 @@ perturbation identity.  The `guide_csv` format depends on the mode:
 |:---|:---:|---|---|---|
 | `single` | top-1 | target gene symbol | `guide_id, gene` | `NFKBIA_g1, NFKBIA` |
 | `dual` | top-2 | construct pair_id (if top-2 belong to same construct) | `sgID_A, sgID_B, gene, pair_id` | `AAAS_-, AAAS_+, AAAS, pair_2` |
-| `multi` | top-4 (fishash) / all (others) | construct_id (if all assigned guides belong to same construct) | `guide_id, gene, construct_id` | `g1, BRCA1, construct_5` |
+| `multi` | all assigned guides | construct_id (if all assigned guides belong to same construct) | `guide_id, gene, construct_id` | `g1, BRCA1, construct_5` |
 
 **Dual-guide edge case:** when a cell's top-2 guides belong to different
 constructs, that cell is marked `ambiguous_pair` in `perturbation_obs.csv`.
@@ -214,7 +238,7 @@ All parameters have defaults and can be overridden under the method name:
 ```yaml
 assignment:
   pgmm_em:
-    umi_threshold: 3       # minimum UMI
+    umi_threshold: 1       # minimum UMI
     prob_threshold: 0.75   # P(Gaussian) assignment cutoff
     workers: 16            # parallel EM fitting workers
     max_em_iter: 200       # EM convergence limit
@@ -280,11 +304,15 @@ connect each cell's perturbation identity with its transcriptome.
 
 ```
 {out_dir}/assignment/{method}/
+├── _raw_assignments.csv          ← raw per-(cell, guide) output (pre-standardize)
+├── guide_qc.csv                  ← per-guide fit params + S_g (pgmm_em only)
 ├── assignments.csv               ← unified schema (all guides, ranked)
 ├── perturbation_obs.csv          ← per-cell perturbation call
-├── monitoring.json               ← wall time, peak RSS, stats
-└── run.log                       ← stdout + stderr
+└── monitoring.json               ← wall time, peak RSS, stats
 ```
+
+Run logs are written under `{log_dir}/assignment/` (`{method}.log` for the
+assignment step, `{method}_obs.log` for the per-cell call).
 
 ---
 
@@ -558,10 +586,10 @@ scprocess-perturb/
 │   ├── run_pgmm_em.py            ← PGMM EM assignment runner
 │   ├── run_umi_threshold.py      ← UMI threshold assignment runner
 │   ├── run_fishash.R             ← fishash assignment runner (R)
-│   ├── postprocess_fishash.py    ← fishash top-K post-processor
+│   ├── postprocess_fishash.py    ← standalone fishash top-K utility (not on the default path)
 │   ├── standardize_assignment.py ← Method-specific CSV → unified schema
 │   ├── make_perturbation_obs.py  ← Unified schema → per-cell perturbation call
-│   └── ...
+│   └── _legacy/                  ← quarantined scripts, not used by the workflow
 ├── envs/
 │   ├── simpleaf.lock.yaml
 │   └── scp_analysis.lock.yaml
@@ -597,6 +625,63 @@ guide cDNA to the same TruSeq barcode as mRNA.  No translation.
 ---
 
 ## Changelog
+
+### v0.2.5 — 2026-08-12
+
+- **Canonical `_raw_assignments.csv` order (pgmm_em):** rows are sorted
+  `cell` asc, `UMI_counts` desc, `gRNA` asc before writing — a deterministic
+  total order (the `gRNA` tie-break resolves the ~0.73% of cells with a tied top
+  UMI). Pure reordering: no column values, retained set, or `guide_qc.csv`
+  change. The redundant per-worker sort was removed.
+- **`docs/DECISIONS.md`:** design-decision log. First entry (D1) records the
+  deferred question of whether pgmm_em's per-cell top-1 should rank by
+  `prob_gaussian` (current) or `UMI_counts` — they disagree for ~9% of cells.
+  Consumers must not infer top-1 from `_raw_assignments.csv` row position.
+
+### v0.2.4 — 2026-08-11
+
+- **Docs/consistency cleanup:** removed the unused `--workers` flag and stale
+  crispat references from `run_umi_threshold.py`; unified its monitoring output
+  to `monitoring.json` (matching `pgmm_em` / `fishash`); dropped hardcoded
+  fallback paths from `build_guide_hash.py`; corrected the assignment-outputs
+  section in this README (log location, `_raw_assignments.csv`).
+- **`scripts/_legacy/`:** quarantined 10 scripts that are not used by the
+  workflow (old analysis/param-sweep/merge helpers). They are retained here for
+  reference and can be removed later. `preprocess_cutadapt.sh` + `parse_samples.py`
+  (used by the `preprocess.trimmed` option), `postprocess_fishash.py` (standalone
+  utility), and `guide_matcher.py` + `umi_dedup_matrix.py` (documented in the SOP)
+  are kept in `scripts/`.
+
+### v0.2.3 — 2026-08-11
+
+- **No top-K truncation in the pipeline:** `fishash` is no longer truncated by
+  `postprocess_fishash.py`; its raw CSV is fed straight to
+  `standardize_assignment.py`, which keeps and ranks every FDR-passing candidate.
+  All three methods are now symmetric — `assignments.csv` holds all candidates,
+  ranked; per-cell selection is deferred to `make_perturbation_obs.py`.
+- **`rules/assignment.smk`:** removed the fishash post-processing branch and the
+  `_TOP_K` map; the `run_assignment` shell is now run-method → standardize.
+- **Multi guide_design fix:** `make_perturbation_obs.py` previously fell back to
+  top-1 for `multi` (it silently considered only one guide). It now considers all
+  ranked guides per cell (`TOP_GUIDES["multi"] = None`).
+- **`postprocess_fishash.py`** is retained as a standalone utility, off the
+  default path.
+- Minor: simplified the dual-guide branch; refreshed stale docstrings.
+
+### v0.2.2 — 2026-08-11
+
+- **Translation table auto-derivation:** `tenx_chemistry` now fully resolves the
+  RNA↔Feature translation table. New `translation_file` field in
+  `chemistry_spec.yaml`; `Snakefile` derives `config["translation_table"]` into
+  `{out_dir}/refs/whitelist_cache/`. Fixes Class A (3' dual-oligo) runs that
+  previously failed on a fresh machine (empty/hardcoded translation path).
+- **`rules/reference.smk`:** New on-demand `download_translation_table` rule
+  (single-file, wildcard-based). Translation downloads removed from the orphan
+  `download_whitelists` rule.
+- **`rules/whitelist.smk` / `rules/merge.smk`:** Declare the translation table as
+  an input so it is downloaded on demand; removed the hardcoded `/data/yunzliu`
+  default from `merge.smk`.
+- Class B (5') chemistries have `translation_file: null` and are unaffected.
 
 ### v0.2.1 — 2026-07-06
 

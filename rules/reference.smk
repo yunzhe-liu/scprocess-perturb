@@ -107,12 +107,16 @@ rule build_sgRNA_index:
 #   3M-5pgex-jan-2023.txt     — 5' v3 (GEM-X)              (teichlab mirror)
 #   3M-3pgex-may-2023.txt     — 3' v4 (GEM-X)              (Cell Ranger only)
 #
-# Translation files (RNA ↔ Feature barcode mapping for dual-oligo chemistries):
-#   translation_3M-february-2018.txt     — 3' v3/v3.1       (teichlab mirror)
-#   translation_3M-3pgex-may-2023.txt    — 3' v4 (GEM-X)    (teichlab mirror)
+# RNA↔Feature translation tables are handled separately by the on-demand
+# download_translation_table rule (see below).
 #
 # All files are cached under the whitelist_dir specified in config.
 # Files that already exist locally are skipped.
+#
+# NOTE: the 10x whitelist files above are not currently consumed on the
+# quantification critical path (both simpleaf --explicit-pl and HAM -w use the
+# GEX-derived barcode whitelist). This rule is retained for future use and is
+# not wired into the default DAG.
 # ---------------------------------------------------------------------------
 rule download_whitelists:
     output:
@@ -120,8 +124,6 @@ rule download_whitelists:
         wl_3M    = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-february-2018.txt"),
         wl_5pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-5pgex-jan-2023.txt"),
         wl_3pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "3M-3pgex-may-2023.txt"),
-        tr_3M    = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "translation_3M-february-2018.txt"),
-        tr_3pgex = os.path.join(config["references"].get("whitelist_dir", config["references"]["sgRNA_index_dir"]), "translation_3M-3pgex-may-2023.txt"),
     threads: 1
     shell:"""
         set -euo pipefail
@@ -171,25 +173,33 @@ rule download_whitelists:
             echo "3M-3pgex-may-2023 whitelist already cached."
         fi
 
-        # Translation: 3M-february-2018 (3' v3/v3.1)
-        if [ ! -f "{output.tr_3M}" ]; then
-            echo "Downloading translation_3M-february-2018..."
-            wget -q -O "{output.tr_3M}.gz" "$MIRROR/translation_3M-february-2018.txt.gz"
-            gunzip "{output.tr_3M}.gz"
-            echo "  Saved: {output.tr_3M}"
-        else
-            echo "translation_3M-february-2018 already cached."
-        fi
-
-        # Translation: 3M-3pgex-may-2023 (3' v4, GEM-X)
-        if [ ! -f "{output.tr_3pgex}" ]; then
-            echo "Downloading translation_3M-3pgex-may-2023..."
-            wget -q -O "{output.tr_3pgex}.gz" "$MIRROR/translation_3M-3pgex-may-2023.txt.gz"
-            gunzip "{output.tr_3pgex}.gz"
-            echo "  Saved: {output.tr_3pgex}"
-        else
-            echo "translation_3M-3pgex-may-2023 already cached."
-        fi
-
         echo "Whitelist download complete."
+    """
+
+
+# ---------------------------------------------------------------------------
+# Rule: download_translation_table
+# Downloads a single 10x RNA<->Feature barcode translation table on demand.
+#
+# Triggered automatically by whitelist.smk / merge.smk when a Class A (3'
+# dual-oligo) chemistry resolves config["translation_table"] to a file under
+# whitelist_dir. Both mirror-hosted tables match the {name} wildcard:
+#   translation_3M-february-2018.txt   — 3' v3/v3.1, 3LT, multiome
+#   translation_3M-3pgex-may-2023.txt  — 3' v4 (GEM-X)
+# Class B (5') chemistries have translation_file: null and never trigger this.
+# ---------------------------------------------------------------------------
+rule download_translation_table:
+    output:
+        table = os.path.join(config["references"]["whitelist_dir"], "translation_{name}.txt"),
+    wildcard_constraints:
+        name = r"3M-february-2018|3M-3pgex-may-2023",
+    threads: 1
+    shell:"""
+        set -euo pipefail
+        MIRROR="https://teichlab.github.io/scg_lib_structs/data/10X-Genomics"
+        mkdir -p "$(dirname "{output.table}")"
+        echo "Downloading translation_{wildcards.name}..."
+        wget -q -O "{output.table}.gz" "$MIRROR/translation_{wildcards.name}.txt.gz"
+        gunzip "{output.table}.gz"
+        echo "  Saved: {output.table}"
     """

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Standalone UMI Threshold Assignment — no crispat dependency.
+Standalone UMI Threshold Assignment.
 
 Reads a merged MEX trio, assigns every (cell, guide) pair with UMI ≥ threshold.
 Output matches PGMM EM CSV format (cell, gRNA, UMI_counts).
 
 Usage:
   python run_umi_threshold.py \
-      --input 04_extraction_mex/ham/ \
-      --output 08_umi_threshold/ham/t3/assignments.csv \
-      --threshold 3 \
-      --workers 16
+      --input  /path/to/guide_matrix/ \
+      --output /path/to/assignment/umi_threshold/_raw_assignments.csv \
+      --threshold 3
 """
 
 import argparse, os, sys, gzip, time, json, platform
@@ -76,7 +75,6 @@ def main():
     parser.add_argument("--input", required=True, help="Path to merged MEX directory")
     parser.add_argument("--output", required=True, help="Output CSV path")
     parser.add_argument("--threshold", type=int, required=True, help="UMI threshold (e.g. 3, 5, 10)")
-    parser.add_argument("--workers", type=int, default=16)
     args = parser.parse_args()
 
     T0 = time.time()
@@ -135,7 +133,7 @@ def main():
     print(f"\n[{time.time()-T0:.0f}s] Writing CSV …")
     t0 = time.time()
 
-    # Sort by cell, then UMI descending (same order as crispat ga_umi)
+    # Sort by cell, then UMI descending
     import pandas as pd
     df = pd.DataFrame(rows, columns=["cell", "gRNA", "UMI_counts"])
     df = df.sort_values(["cell", "UMI_counts"], ascending=[True, False])
@@ -179,7 +177,8 @@ def main():
         },
     }
 
-    mon_json = args.output.replace(".csv", "") + "_monitoring.json"
+    # Match pgmm_em / fishash: monitoring.json in the output directory.
+    mon_json = os.path.join(os.path.dirname(args.output) or ".", "monitoring.json")
     with open(mon_json, "w") as f:
         json.dump(monitor, f, indent=2, default=str)
 
