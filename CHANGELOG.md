@@ -22,9 +22,9 @@ Archival version history for scprocess-perturb.
 
 ### v0.2.3 — 2026-08-11
 
-- **No top-K truncation in the pipeline:** `fishash` is no longer truncated by
-  `postprocess_fishash.py`; its raw CSV is fed straight to
-  `standardize_assignment.py`, which keeps and ranks every FDR-passing candidate.
+- **No top-K truncation in the pipeline:** `fishash` output is no longer
+  truncated; its raw CSV is fed straight to `standardize_assignment.py`, which
+  keeps and ranks every FDR-passing candidate.
   All three methods are now symmetric — `assignments.csv` holds all candidates,
   ranked; per-cell selection is deferred to `make_perturbation_obs.py`.
 - **`rules/assignment.smk`:** removed the fishash post-processing branch and the
@@ -45,8 +45,8 @@ Archival version history for scprocess-perturb.
   (single-file, wildcard-based). Translation downloads removed from the orphan
   `download_whitelists` rule.
 - **`rules/whitelist.smk` / `rules/merge.smk`:** Declare the translation table as
-  an input so it is downloaded on demand; removed the hardcoded `/data/yunzliu`
-  default from `merge.smk`.
+  an input so it is downloaded on demand; removed a hardcoded absolute default
+  path from `merge.smk`.
 - Class B (5') chemistries have `translation_file: null` and are unaffected.
 
 ### v0.2.1 — 2026-07-06

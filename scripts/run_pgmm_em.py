@@ -289,7 +289,7 @@ def _worker(args):
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
     parser = argparse.ArgumentParser(
-        description="PGMM assignment — Poisson-Gaussian Mixture Model via EM (monitored)"
+        description="PGMM assignment — Poisson-Gaussian Mixture Model via MAP-EM"
     )
     parser.add_argument("--input", required=True, help="Path to merged MEX directory")
     parser.add_argument("--output", required=True, help="Output CSV path")
@@ -320,7 +320,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     print(f"{'='*70}")
-    print(f"PGMM EM Assignment — MONITORED RUN")
+    print(f"PGMM EM Assignment")
     print(f"  Tool:      pgmm_em")
     print(f"  Input:     {inp}")
     print(f"  Output:    {args.output}")
