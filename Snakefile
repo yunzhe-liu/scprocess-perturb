@@ -168,9 +168,9 @@ _saf_quant = _saf.setdefault("quant", {})
 _saf_quant.setdefault("resolution", "parsimony-gene")
 _saf_quant.setdefault("use_knee", False)
 
-# Assignment guide_csv falls back to top-level guide_csv
+# Assignment guide_csv falls back to the top-level guide_csv
 _asgn = config.setdefault("assignment", {})
-_asgn.setdefault("guide_csv", "")
+_asgn.setdefault("guide_csv", config.get("guide_csv", ""))
 _asgn.setdefault("methods", [])
 
 

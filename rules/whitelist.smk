@@ -56,6 +56,8 @@ rule extract_whitelist:
             conda activate "$ENV_NAME"
         fi
 
+        mkdir -p "$(dirname "{output.wl_csv}")" "$(dirname "{output.wl_noheader}")"
+
         GEX_FILE="{input.h5}"
         EXT="${{GEX_FILE##*.}}"
 

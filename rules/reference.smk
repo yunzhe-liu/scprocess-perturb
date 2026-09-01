@@ -33,6 +33,7 @@ rule generate_guide_reference:
             conda env create -f "{params.lock_yaml}"
             conda activate "$ENV_NAME"
         fi
+        mkdir -p "$(dirname "{output.fasta}")" "$(dirname "{output.t2g}")"
         # Skip if outputs already exist (adapter is idempotent; avoid redundant runs)
         if [ -f "{output.fasta}" ] && [ -f "{output.t2g}" ]; then
             echo "Guide reference files exist, skipping generation."
