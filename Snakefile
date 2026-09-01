@@ -214,12 +214,14 @@ _integration_output_names = {
 }
 _integration_cfg = config.get("integration", {})
 _integration_mode = _integration_cfg.get("mode", "construct")
-_integration_methods = _integration_cfg.get("methods", _assignment_methods)
+_integration_methods = _assignment_methods
 if _assignment_methods:
-    if not _integration_methods:
-        sys.exit("ERROR: integration requires at least one assignment method")
-    if not set(_integration_methods).issubset(set(_assignment_methods)):
-        sys.exit("ERROR: integration.methods must be a subset of assignment.methods")
+    if len(_integration_methods) != 1:
+        sys.exit(
+            "ERROR: multimodal integration requires exactly one assignment method"
+        )
+    if _integration_methods[0] not in _assignment_methods:
+        sys.exit("ERROR: integration method must be listed in assignment.methods")
     if _integration_mode not in _integration_output_names:
         sys.exit(
             f"ERROR: unknown integration.mode='{_integration_mode}'; "

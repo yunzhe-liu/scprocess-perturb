@@ -87,5 +87,4 @@ assignment:
 # guide_top1 | guide_full | construct.
 integration:
   mode: construct                    # guide_top1 | guide_full | construct
-  # methods: [pgmm_em]               # defaults to assignment.methods
   # dataset: workflow                # provenance label only

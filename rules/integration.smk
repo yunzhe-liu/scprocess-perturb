@@ -13,7 +13,6 @@ import json
 import shlex
 
 INTEGRATION_CONFIG = config.get("integration", {})
-INTEGRATION_METHODS = INTEGRATION_CONFIG.get("methods", _assignment_methods)
 INTEGRATION_MODE = INTEGRATION_CONFIG.get("mode", "construct")
 
 OUTPUT_NAMES = {
@@ -30,16 +29,18 @@ def _integration_pairs(values):
     )
 
 
+INTEGRATION_ASSIGNMENT = os.path.join(
+    config["out_dir"], "assignment", _assignment_methods[0], "assignments.csv"
+)
+
+
 rule integrate_multimodal:
     input:
         gex = [GROUPS[group]["gex_h5"] for group in GROUPS],
         barcodes = os.path.join(
             config["out_dir"], "guide_matrix", "merged_barcodes.tsv.gz"
         ),
-        assignments = [
-            os.path.join(config["out_dir"], "assignment", method, "assignments.csv")
-            for method in INTEGRATION_METHODS
-        ],
+        assignment = INTEGRATION_ASSIGNMENT,
     output:
         adata = os.path.join(
             config["out_dir"], "integration", OUTPUT_NAMES[INTEGRATION_MODE]
@@ -50,17 +51,12 @@ rule integrate_multimodal:
         gex_args = lambda wildcards: _integration_pairs(
             [("gex", group, GROUPS[group]["gex_h5"]) for group in GROUPS]
         ),
-        assign_args = lambda wildcards: _integration_pairs(
-            [("assign", method, os.path.join(
-                config["out_dir"], "assignment", method, "assignments.csv"
-            )) for method in INTEGRATION_METHODS]
-        ),
+        assignment = INTEGRATION_ASSIGNMENT,
         guide_csv = config.get("assignment", {}).get("guide_csv", ""),
         config_json = lambda wildcards: json.dumps({
             "dataset": INTEGRATION_CONFIG.get("dataset", "workflow"),
-            "cell_key_mode": "lane_barcode",
+            "cell_key_mode": "auto",
             "cell_universe": "gex",
-            "methods": INTEGRATION_METHODS,
             "mode": INTEGRATION_MODE,
         }),
     log:
@@ -80,7 +76,7 @@ rule integrate_multimodal:
 
         python3 "{params.script}" \\
             {params.gex_args} \\
-            {params.assign_args} \\
+            --assign "{params.assignment}" \\
             --barcodes "{input.barcodes}" \\
             --mode "{params.mode}" \\
             --guide-csv "{params.guide_csv}" \\

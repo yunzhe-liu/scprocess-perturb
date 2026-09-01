@@ -4,27 +4,33 @@
 The integration step is the terminal export for scprocess-perturb.  It reads:
 
   * one expression matrix per group (``group=path``),
-  * the merged guide barcode list, and
-  * one standardized assignment CSV per method (``method=path``).
+  * optionally, the merged guide barcode list, and
+  * one assignment CSV (standardized workflow schema or supported raw schema).
 
 The output is a new AnnData file.  Existing GEX, MEX, and assignment files are
 never modified.
 
-Cell identity follows the same convention as ``rules/merge.smk``: normalize a
-16-base barcode from the expression matrix and append the group suffix
-(``-L01`` for a group ending in ``01``).  The GEX cells form the output cell
-universe; assignment rows are left-joined onto that universe.
+Cell identity follows the same convention as ``rules/merge.smk``.  When the
+expression ``obs`` contains ``lane`` and ``barcode_16mer``, the key is
+``{16mer}-L{lane:02d}``; otherwise a normalized 16-base barcode receives the
+group suffix (``-L01`` for a group ending in ``01``).  Already-merged
+lane-prefixed IDs such as ``l1_AAAC...`` are reduced to the 16mer and repeated
+keys are retained once in deterministic file order.  The GEX cells form the
+output cell universe; assignment rows are left-joined onto that universe.  If
+an already-merged input has IDs in the form ``{16mer}-{number}``, that suffix
+is retained for batch-aware alignment.
 
 Output layout:
 
   X                         expression matrix, cells x genes
   obs.cell_key              canonical integration key
-  obs.assigned_<method>      top-ranked guide for every method
-  obsm.guide_candidates_*    sparse native-score matrices (guide_full mode)
-  obs.assigned_construct_*   top-ranked construct (construct mode)
-  obsm.construct_candidates_* sparse construct-score matrices (construct mode)
-  uns.method_weights        score column used by each candidate matrix
-  uns.<candidate>_guides    column order for each candidate matrix
+  obs.assigned_guide          top-ranked guide
+  obsm.guide_candidates       sparse native-score matrix (guide_full mode)
+  obs.assigned_construct      top-ranked construct (construct mode)
+  obsm.construct_candidates   sparse construct-score matrix (construct mode)
+  uns.assignment_score        score metadata for the assignment matrix
+  uns.guide_candidates_guides / uns.construct_candidates_constructs
+                              column order for candidate matrices
   uns.integration/manifest  provenance and alignment summary
 
 Both the current standardized assignment schema and the older raw schema are
@@ -45,24 +51,28 @@ import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import anndata as ad
 from anndata import AnnData
 
 
 _BARCODE_RE = re.compile(r"([ACGTN]{16})", re.IGNORECASE)
+_LANE_PREFIXED_BARCODE_RE = re.compile(r"^l\d+_[ACGTN]{16}$", re.IGNORECASE)
+_SUFFIXED_BARCODE_RE = re.compile(r"^[ACGTN]{16}-(\d+)$", re.IGNORECASE)
+_CELL_SUFFIX_RE = re.compile(r"-L?0*(\d+)$", re.IGNORECASE)
 _GUIDE_ID_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 MODE_CHOICES = ("guide_top1", "guide_full", "construct")
 
 
 @dataclass
 class ExpressionData:
-    X: sp.spmatrix
+    X: object
     obs: pd.DataFrame
     var: pd.DataFrame
+    backing: object | None = None
 
 
 @dataclass
 class AssignmentData:
-    method: str
     score_column: str
     score_type: str
     top1: pd.Series
@@ -139,8 +149,15 @@ def _read_expression(path: Path) -> ExpressionData:
     """Read h5ad, h5mu RNA, or the scprocess raw H5 matrix."""
     suffix = path.suffix.lower()
     if suffix == ".h5ad":
-        with h5py.File(path, "r") as handle:
-            return _read_h5ad_group(handle)
+        # Keep large sparse h5ad inputs backed.  This avoids materializing all
+        # X data before the output writer can stream it to the new artifact.
+        backed = ad.read_h5ad(path, backed="r")
+        return ExpressionData(
+            X=backed.X,
+            obs=backed.obs.copy(),
+            var=backed.var.copy(),
+            backing=backed,
+        )
 
     if suffix == ".h5mu":
         with h5py.File(path, "r") as handle:
@@ -186,6 +203,49 @@ def _group_suffix(group: str) -> str:
     return f"-L{match.group(1)}" if match else f"-{group}"
 
 
+def _expression_cell_keys(obs: pd.DataFrame, group: str) -> list[str]:
+    """Build keys from explicit lane metadata or the configured group suffix."""
+    if {"lane", "barcode_16mer"}.issubset(obs.columns):
+        lane_values = pd.to_numeric(obs["lane"], errors="raise").to_numpy(
+            dtype=float
+        )
+        if (
+            not np.isfinite(lane_values).all()
+            or not np.equal(lane_values, np.floor(lane_values)).all()
+            or (lane_values < 1).any()
+        ):
+            raise ValueError("expression obs.lane must contain positive integers")
+        lanes = lane_values.astype(int)
+        barcodes = obs["barcode_16mer"].astype(str)
+        return [
+            f"{_normalize_barcode(barcode)}-L{lane:02d}"
+            for barcode, lane in zip(barcodes, lanes)
+        ]
+
+    original_ids = obs.index.astype(str).to_numpy()
+    if original_ids.size and all(
+        _LANE_PREFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
+    ):
+        # Some already-merged h5ad files encode lane in the cell ID (for
+        # example, Papalexi: l1_AAAC...).  The assignment table uses the
+        # canonical 16mer-L## form, so retain the barcode and let the loader
+        # deterministically collapse repeated 16mers across lanes below.
+        return [_normalize_barcode(cell) for cell in original_ids]
+    if original_ids.size and all(
+        _SUFFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
+    ):
+        # Already-merged 10x-style h5ad files commonly preserve a numeric
+        # sample/lane suffix (for example, AAAC...-1).  Keep it so assignment
+        # rows using the same IDs align to the correct batch.
+        return [
+            f"{_normalize_barcode(cell)}-"
+            f"{_SUFFIXED_BARCODE_RE.fullmatch(cell).group(1)}"
+            for cell in original_ids
+        ]
+    suffix = _group_suffix(group)
+    return [f"{_normalize_barcode(cell)}{suffix}" for cell in original_ids]
+
+
 def _parse_pairs(items: list[str], label: str) -> list[tuple[str, Path]]:
     pairs = []
     seen = set()
@@ -205,16 +265,27 @@ def _parse_pairs(items: list[str], label: str) -> list[tuple[str, Path]]:
     return pairs
 
 
+def _parse_path(item: str, label: str) -> Path:
+    path = Path(item)
+    if not path.exists():
+        raise FileNotFoundError(f"{label} input does not exist: {path}")
+    return path
+
+
 def load_expression(groups: list[tuple[str, Path]]) -> tuple[ExpressionData, list[str]]:
     if not groups:
         raise ValueError("at least one --gex group=path is required")
 
     matrices = []
     observations = []
+    lane_prefixed_input = True
     first_var = None
     first_var_names = None
+    backings = []
     for group, path in groups:
         data = _read_expression(path)
+        if data.backing is not None:
+            backings.append(data.backing)
         var_names = data.var.index.astype(str).tolist()
         if first_var_names is None:
             first_var_names = var_names
@@ -226,11 +297,10 @@ def load_expression(groups: list[tuple[str, Path]]) -> tuple[ExpressionData, lis
             )
 
         original_ids = data.obs.index.astype(str).to_numpy()
-        suffix = _group_suffix(group)
-        cell_keys = [f"{_normalize_barcode(cell)}{suffix}" for cell in original_ids]
-        if len(set(cell_keys)) != len(cell_keys):
-            raise ValueError(f"{path}: duplicate integration cell keys within group {group!r}")
-
+        lane_prefixed_input = lane_prefixed_input and bool(original_ids.size) and all(
+            _LANE_PREFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
+        )
+        cell_keys = _expression_cell_keys(data.obs, group)
         obs = data.obs.copy()
         obs["cell_key"] = cell_keys
         obs["source_group"] = group
@@ -240,10 +310,22 @@ def load_expression(groups: list[tuple[str, Path]]) -> tuple[ExpressionData, lis
         observations.append(obs)
 
     obs = pd.concat(observations, axis=0, sort=False)
+    if len(matrices) == 1:
+        X = matrices[0]
+    else:
+        X = sp.vstack(matrices, format="csr")
+    if not obs.index.is_unique:
+        # Lane-prefixed merged h5ad inputs can contain the same 16mer in more
+        # than one lane.  Keep the first row in file order, which is stable
+        # and preserves the same cell universe used by the assignment table.
+        if not lane_prefixed_input:
+            raise ValueError("expression inputs produce duplicate integration cell keys")
+        keep = ~obs.index.duplicated(keep="first")
+        obs = obs.iloc[np.flatnonzero(keep)].copy()
+        X = X[keep]
     if not obs.index.is_unique:
         raise ValueError("expression inputs produce duplicate integration cell keys")
-    X = sp.vstack(matrices, format="csr")
-    return ExpressionData(X=X, obs=obs, var=first_var), list(obs.index)
+    return ExpressionData(X=X, obs=obs, var=first_var, backing=backings), list(obs.index)
 
 
 def _pick_raw_score_column(columns) -> str:
@@ -264,6 +346,34 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
     """Load a guide -> construct mapping from wide or normalized guide CSV."""
     frame = pd.read_csv(path, dtype=str, keep_default_na=False)
     columns = set(frame.columns)
+    recognized_columns = (
+        {"sgID_A", "sgID_B"}.issubset(columns)
+        or ("guide_id" in columns and "construct_id" in columns)
+        or ("gRNA" in columns and any(
+            column in columns for column in ("construct_id", "pair_id", "unique sgRNA pair ID")
+        ))
+    )
+    if not recognized_columns:
+        # The reference t2g files are headerless two-column tables.  Their
+        # first column is the guide and their second column is the construct
+        # identity; this is especially useful for single-guide systems where
+        # guide-level construct IDs map each guide to itself.
+        raw_frame = pd.read_csv(path, sep=None, engine="python", header=None, dtype=str,
+                                keep_default_na=False)
+        if raw_frame.shape[1] != 2:
+            raise ValueError(
+                f"{path}: unsupported guide mapping; expected a recognized CSV "
+                "schema or a headerless two-column guide/construct table"
+            )
+        raw_frame.columns = ["guide_id", "construct_id"]
+        frame = raw_frame
+        columns = set(frame.columns)
+    duplicate_column = "duplicated guide pair?"
+    if duplicate_column in columns:
+        duplicate = frame[duplicate_column].str.strip().str.lower().isin(
+            {"true", "yes", "1"}
+        )
+        frame = frame.loc[~duplicate].copy()
     mapping = {}
 
     def add_mapping(guide: str, construct: str) -> None:
@@ -295,9 +405,12 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
             if not construct:
                 continue
             for column in ("sgID_A", "sgID_B"):
-                guide = _sanitize_guide_id(row[column])
-                if guide:
-                    add_mapping(guide, construct)
+                raw_guide = str(row[column]).strip()
+                sanitized = _sanitize_guide_id(raw_guide)
+                aliases = [raw_guide] if sanitized == raw_guide else [raw_guide, sanitized]
+                for guide in aliases:
+                    if guide:
+                        add_mapping(guide, construct)
         return mapping
 
     guide_column = (
@@ -318,15 +431,19 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
             "(pair_id is also accepted)"
         )
     for row in frame.to_dict(orient="records"):
-        guide = _sanitize_guide_id(row[guide_column])
+        raw_guide = str(row[guide_column]).strip()
         construct = str(row[construct_column]).strip()
-        if guide and construct:
-            add_mapping(guide, construct)
+        if raw_guide and construct:
+            sanitized = _sanitize_guide_id(raw_guide)
+            aliases = [raw_guide] if sanitized == raw_guide else [raw_guide, sanitized]
+            for guide in aliases:
+                if guide:
+                    add_mapping(guide, construct)
     return mapping
 
 
-def load_assignment(method: str, path: Path) -> AssignmentData:
-    frame = pd.read_csv(path)
+def load_assignment(path: Path) -> AssignmentData:
+    frame = pd.read_csv(path, keep_default_na=False)
     standardized = {"cell_barcode", "guide_id", "score"}.issubset(frame.columns)
     if standardized:
         cell_column, guide_column, score_column = "cell_barcode", "guide_id", "score"
@@ -345,8 +462,8 @@ def load_assignment(method: str, path: Path) -> AssignmentData:
         rank_column = None
 
     work = pd.DataFrame({
-        "cell_key": frame[cell_column].astype(str),
-        "guide": frame[guide_column].astype(str),
+        "cell_key": frame[cell_column].astype(str).str.strip(),
+        "guide": frame[guide_column].astype(str).str.strip(),
         "weight": pd.to_numeric(frame[score_column], errors="raise"),
     })
     work["umi"] = (
@@ -375,7 +492,6 @@ def load_assignment(method: str, path: Path) -> AssignmentData:
     top1 = pd.Series(top["guide"].to_numpy(), index=top["cell_key"].to_numpy())
     guides = sorted(work["guide"].unique().tolist())
     return AssignmentData(
-        method=method,
         score_column=score_column,
         score_type=score_type,
         top1=top1,
@@ -402,6 +518,46 @@ def _candidate_matrix(assign: AssignmentData, cell_keys: list[str]) -> sp.csr_ma
     return sp.coo_matrix(
         (vals, (rows, cols)), shape=(len(cell_keys), len(assign.guides))
     ).tocsr()
+
+
+def _align_assignment_cells(
+    assignment: AssignmentData, cell_keys: list[str]
+) -> AssignmentData:
+    """Resolve assignment cell aliases against the GEX cell universe."""
+    gex_keys = set(cell_keys)
+    by_barcode: dict[str, list[str]] = {}
+    for key in cell_keys:
+        barcode = _normalize_barcode(key)
+        by_barcode.setdefault(barcode, []).append(key)
+
+    def resolve(raw_key: str) -> str:
+        if raw_key in gex_keys:
+            return raw_key
+        barcode = _normalize_barcode(raw_key)
+        candidates = by_barcode.get(barcode, [])
+        raw_suffix = _CELL_SUFFIX_RE.search(raw_key)
+        if _SUFFIXED_BARCODE_RE.fullmatch(raw_key) and raw_suffix:
+            same_suffix = [
+                key for key in candidates
+                if (match := _CELL_SUFFIX_RE.search(key))
+                and int(match.group(1)) == int(raw_suffix.group(1))
+            ]
+            return same_suffix[0] if len(same_suffix) == 1 else raw_key
+        if len(candidates) == 1:
+            return candidates[0]
+        return raw_key
+
+    candidates = assignment.candidates.copy()
+    candidates["cell_key"] = candidates["cell_key"].map(resolve)
+    top1 = assignment.top1.copy()
+    top1.index = pd.Index([resolve(key) for key in top1.index], name=top1.index.name)
+    return AssignmentData(
+        score_column=assignment.score_column,
+        score_type=assignment.score_type,
+        top1=top1,
+        candidates=candidates,
+        guides=assignment.guides,
+    )
 
 
 def _construct_matrix(
@@ -455,8 +611,8 @@ def _construct_matrix(
 
 def integrate(
     groups: list[tuple[str, Path]],
-    assignments: list[tuple[str, Path]],
-    merged_barcodes: Path,
+    assignment: Path,
+    merged_barcodes: Path | None,
     mode: str,
     config_snapshot: dict,
     guide_csv: Path | None = None,
@@ -464,41 +620,49 @@ def integrate(
     if mode not in MODE_CHOICES:
         raise ValueError(f"unknown integration mode {mode!r}; choose from {MODE_CHOICES}")
     expression, cell_keys = load_expression(groups)
-    merged_keys = _read_merged_barcodes(merged_barcodes)
+    merged_keys = (
+        _read_merged_barcodes(merged_barcodes)
+        if merged_barcodes is not None
+        else set()
+    )
     gex_keys = set(cell_keys)
     print(
         f"[gex] {expression.X.shape[0]:,} cells x {expression.X.shape[1]:,} genes"
     )
-    print(
-        f"[merge] {len(merged_keys):,} guide-matrix cells; "
-        f"{len(merged_keys & gex_keys):,} overlap GEX"
+    if merged_barcodes is not None:
+        print(
+            f"[merge] {len(merged_keys):,} guide-matrix cells; "
+            f"{len(merged_keys & gex_keys):,} overlap GEX"
+        )
+    else:
+        print("[merge] merged guide barcode list not supplied; overlap not computed")
+
+    loaded = _align_assignment_cells(load_assignment(assignment), cell_keys)
+    obs = expression.obs.copy()
+    obs["assigned_guide"] = pd.Series(
+        loaded.top1.reindex(cell_keys).to_numpy(),
+        index=obs.index,
+        dtype="category",
     )
 
-    loaded = [load_assignment(method, path) for method, path in assignments]
-    obs = expression.obs.copy()
-    for assignment in loaded:
-        obs[f"assigned_{assignment.method}"] = (
-            assignment.top1.reindex(cell_keys).to_numpy()
-        )
-
     adata = AnnData(X=expression.X, obs=obs, var=expression.var)
+    # Keep backed source handles alive until the caller has written the output.
+    # This attribute is private and is not serialized into the h5ad artifact.
+    adata._scprocess_expression_backing = expression.backing
     adata.obs_names = pd.Index(cell_keys, name="cell_id")
 
-    method_weights = {}
     candidate_keys = []
     if mode == "guide_full":
-        for assignment in loaded:
-            key = f"guide_candidates_{assignment.method}"
-            adata.obsm[key] = _candidate_matrix(assignment, cell_keys)
-            adata.uns[f"{key}_guides"] = np.asarray(assignment.guides, dtype=object)
-            method_weights[assignment.method] = assignment.score_column
-            candidate_keys.append(key)
-            print(
-                f"[guide_full] {key}: {adata.obsm[key].shape[0]:,}x"
-                f"{adata.obsm[key].shape[1]:,} nnz={adata.obsm[key].nnz:,}"
-            )
+        key = "guide_candidates"
+        adata.obsm[key] = _candidate_matrix(loaded, cell_keys)
+        adata.uns[f"{key}_guides"] = np.asarray(loaded.guides, dtype=object)
+        candidate_keys.append(key)
+        print(
+            f"[guide_full] {key}: {adata.obsm[key].shape[0]:,}x"
+            f"{adata.obsm[key].shape[1]:,} nnz={adata.obsm[key].nnz:,}"
+        )
 
-    construct_aggregation = {}
+    construct_aggregation = None
     if mode == "construct":
         if guide_csv is None:
             raise ValueError("construct mode requires --guide-csv")
@@ -506,43 +670,44 @@ def integrate(
         if not guide_construct:
             raise ValueError(f"{guide_csv}: no guide-to-construct mappings found")
         adata.uns["guide_construct_map"] = guide_construct
-        for assignment in loaded:
-            guide_top1 = assignment.top1.reindex(cell_keys)
-            adata.obs[f"assigned_construct_{assignment.method}"] = guide_top1.map(
-                guide_construct
-            ).to_numpy()
-            key = f"construct_candidates_{assignment.method}"
-            matrix, constructs, unmapped, aggregation = _construct_matrix(
-                assignment, cell_keys, guide_construct
-            )
-            adata.obsm[key] = matrix
-            adata.uns[f"{key}_constructs"] = np.asarray(constructs, dtype=object)
-            construct_aggregation[assignment.method] = aggregation
-            method_weights[assignment.method] = assignment.score_column
-            candidate_keys.append(key)
-            print(
-                f"[construct] {key}: {matrix.shape[0]:,}x{matrix.shape[1]:,} "
-                f"nnz={matrix.nnz:,}; unmapped={unmapped:,}"
-            )
+        adata.obs["assigned_construct"] = pd.Series(
+            adata.obs["assigned_guide"].map(guide_construct).to_numpy(),
+            index=adata.obs.index,
+            dtype="category",
+        )
+        key = "construct_candidates"
+        matrix, constructs, unmapped, construct_aggregation = _construct_matrix(
+            loaded, cell_keys, guide_construct
+        )
+        adata.obsm[key] = matrix
+        adata.uns[f"{key}_constructs"] = np.asarray(constructs, dtype=object)
+        candidate_keys.append(key)
+        print(
+            f"[construct] {key}: {matrix.shape[0]:,}x{matrix.shape[1]:,} "
+            f"nnz={matrix.nnz:,}; unmapped={unmapped:,}"
+        )
 
     assignment_summary = {
-        assignment.method: {
-            "score_column": assignment.score_column,
-            "score_type": assignment.score_type,
-            "n_rows": int(len(assignment.candidates)),
-            "n_guides": int(len(assignment.guides)),
-            "n_cells": int(assignment.candidates["cell_key"].nunique()),
-        }
-        for assignment in loaded
+        "score_column": loaded.score_column,
+        "score_type": loaded.score_type,
+        "n_rows": int(len(loaded.candidates)),
+        "n_guides": int(len(loaded.guides)),
+        "n_cells": int(loaded.candidates["cell_key"].nunique()),
     }
-    adata.uns["method_weights"] = method_weights
+    adata.uns["assignment_score"] = {
+        "column": loaded.score_column,
+        "type": loaded.score_type,
+    }
     adata.uns["config"] = json.loads(json.dumps(config_snapshot, default=str))
     adata.uns["integration"] = {
         "mode": mode,
         "cell_universe": "gex",
-        "cell_key_rule": "normalized_16mer + merge group suffix",
-        "construct_aggregation": construct_aggregation if mode == "construct" else None,
-        "assignment_methods": assignment_summary,
+        "cell_key_rule": (
+            "auto: explicit lane + barcode_16mer; lane-prefixed IDs; existing "
+            "numeric suffix; otherwise normalized_16mer + merge group suffix"
+        ),
+        "construct_aggregation": construct_aggregation,
+        "assignment": assignment_summary,
         "config": json.loads(json.dumps(config_snapshot, default=str)),
     }
     adata.uns["manifest"] = {
@@ -550,10 +715,13 @@ def integrate(
         "script": "integrate_multimodal.py",
         "n_cells": int(adata.n_obs),
         "n_genes": int(adata.n_vars),
-        "assignment_methods": [method for method, _ in assignments],
+        "assignment_rows": int(len(loaded.candidates)),
+        "assignment_cells": int(loaded.candidates["cell_key"].nunique()),
         "obsm_candidate_keys": candidate_keys,
-        "merged_barcode_count": len(merged_keys),
-        "merged_barcode_overlap": len(merged_keys & gex_keys),
+        "merged_barcode_count": len(merged_keys) if merged_barcodes is not None else None,
+        "merged_barcode_overlap": (
+            len(merged_keys & gex_keys) if merged_barcodes is not None else None
+        ),
     }
     return adata
 
@@ -561,8 +729,10 @@ def integrate(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gex", action="append", required=True, metavar="GROUP=PATH")
-    parser.add_argument("--assign", action="append", required=True, metavar="METHOD=PATH")
-    parser.add_argument("--barcodes", required=True, help="merged_barcodes.tsv.gz")
+    parser.add_argument("--assign", required=True, metavar="PATH")
+    parser.add_argument(
+        "--barcodes", default="", help="optional merged_barcodes.tsv.gz"
+    )
     parser.add_argument(
         "--mode", "--assignment-mode", dest="mode", choices=MODE_CHOICES,
         required=True,
@@ -576,9 +746,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     groups = _parse_pairs(args.gex, "gex")
-    assignments = _parse_pairs(args.assign, "assign")
-    barcode_path = Path(args.barcodes)
-    if not barcode_path.exists():
+    assignment_path = _parse_path(args.assign, "assign")
+    barcode_path = Path(args.barcodes) if args.barcodes else None
+    if barcode_path is not None and not barcode_path.exists():
         raise FileNotFoundError(f"merged barcode file does not exist: {barcode_path}")
     try:
         config_snapshot = json.loads(args.config_json)
@@ -590,7 +760,7 @@ def main(argv=None) -> int:
         raise ValueError("construct mode requires --guide-csv")
     adata = integrate(
         groups=groups,
-        assignments=assignments,
+        assignment=assignment_path,
         merged_barcodes=barcode_path,
         mode=args.mode,
         config_snapshot=config_snapshot,
