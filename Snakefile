@@ -1,8 +1,8 @@
 # ==============================================================================
 # scprocess-perturb — Snakefile
 # ==============================================================================
-# Perturb-seq guide extraction (+ optional assignment). GEX matrices come from
-# an external pre-processing step and are a direct input.
+# Perturb-seq guide extraction → assignment → multimodal integration. GEX
+# matrices come from an external pre-processing step and are direct inputs.
 #   guide_fasta → sgRNA_index ────────────────────────┐
 #   gex_h5 (external) → extract_whitelist ────────────┤
 #   sgRNA_fastq ──────────→ sgRNA_quant → merge → merged MEX → assignment
@@ -203,6 +203,32 @@ for _m in _assignment_methods:
     _assignment_targets.append(os.path.join(_base, "assignments.csv"))
     _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
 
+# Multimodal integration is the required terminal step whenever assignment is
+# configured.  It has one selected mode per run; stage-specific Snakemake
+# targets can still stop before this target (for example, at extraction or
+# assignment).
+_integration_output_names = {
+    "guide_top1": "perturbation_adata_guide_top1.h5ad",
+    "guide_full": "perturbation_adata_guide_full.h5ad",
+    "construct": "perturbation_adata_construct.h5ad",
+}
+_integration_cfg = config.get("integration", {})
+_integration_mode = _integration_cfg.get("mode", "construct")
+_integration_methods = _integration_cfg.get("methods", _assignment_methods)
+if _assignment_methods:
+    if not _integration_methods:
+        sys.exit("ERROR: integration requires at least one assignment method")
+    if not set(_integration_methods).issubset(set(_assignment_methods)):
+        sys.exit("ERROR: integration.methods must be a subset of assignment.methods")
+    if _integration_mode not in _integration_output_names:
+        sys.exit(
+            f"ERROR: unknown integration.mode='{_integration_mode}'; "
+            f"choose from {sorted(_integration_output_names)}"
+        )
+    _assignment_targets.append(os.path.join(
+        config["out_dir"], "integration", _integration_output_names[_integration_mode]
+    ))
+
 rule all:
     input:
         os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
@@ -224,3 +250,6 @@ include: "rules/merge.smk"
 
 if _assignment_methods:
     include: "rules/assignment.smk"
+
+if _assignment_methods:
+    include: "rules/integration.smk"

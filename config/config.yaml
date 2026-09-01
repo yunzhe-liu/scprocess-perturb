@@ -80,3 +80,12 @@ assignment:
   #   max_em_iter: 200
   # - umi_threshold              # simple UMI >= threshold filter (default t=3)
   # - fishash                    # Fisher exact test (needs R + fishash package)
+
+# ── Multimodal integration (required terminal step when assignment is enabled) ──
+# The GEX inputs are taken from groups.yaml, one expression matrix per group.
+# Select exactly one output representation for each complete workflow run:
+# guide_top1 | guide_full | construct.
+integration:
+  mode: construct                    # guide_top1 | guide_full | construct
+  # methods: [pgmm_em]               # defaults to assignment.methods
+  # dataset: workflow                # provenance label only

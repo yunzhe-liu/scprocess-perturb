@@ -286,6 +286,91 @@ assignment step, `{method}_obs.log` for the per-cell call).
 
 ---
 
+## Multimodal Integration
+
+The standard term is **multimodal integration**. It is the required terminal
+step of a complete preprocessing workflow whenever `assignment.methods` is
+configured. It does not modify the existing MEX files or assignment CSV and
+per-cell outputs. Select one representation in `config.yaml`:
+
+```yaml
+integration:
+  mode: construct           # guide_top1 | guide_full | construct
+  # methods: [pgmm_em]      # defaults to assignment.methods
+  # dataset: workflow       # provenance label only
+```
+
+The expression interface is the existing `gex_h5` field in `groups.yaml`, one
+file per group/lane. Supported formats are `.h5`, `.h5ad`, and `.h5mu`; for
+`.h5mu`, the `rna` modality is used. The expression matrices must have the
+same gene order across groups. Cell IDs are normalized to the 16-base barcode
+and receive the same group suffix as `merge_matrices` (for example,
+`AAAC...-L01`).
+
+The output cell universe is the concatenated GEX input. Assignment rows are
+left-joined by this canonical cell key, so a cell without a guide assignment
+remains in the AnnData object with a missing `assigned_<method>` value.
+
+The three modes are mutually exclusive per run:
+
+| Mode | Contents | Use |
+|---|---|---|
+| `guide_top1` | One `obs.assigned_<method>` column per method | Only the top-ranked assigned guide is needed downstream |
+| `guide_full` | Top-1 columns plus sparse `obsm.guide_candidates_<method>` matrices | Retain all assigned guide candidates and their native scores |
+| `construct` | Guide top-1 columns, construct top-1 columns, and sparse construct candidate matrices | Dual-guide or multi-guide libraries where the perturbation identity is the complete construct |
+
+`guide_full` means all guide candidates present in the standardized assignment
+CSV for each cell; it is not restricted to the top-1 guide. In `construct`
+mode, the guide library is required via `assignment.guide_csv` (the existing
+top-level `guide_csv` is used as its fallback). For a dual-guide library, the
+workflow maps both `sgID_A` and `sgID_B` to the row's construct/pair ID. The
+construct candidate score keeps the best native score among mapped
+guides for that cell and construct (maximum for higher-is-better scores;
+minimum for `log_pval`); the aggregation is recorded per method in
+`uns['integration']['construct_aggregation']`. The original guide assignment
+columns remain available for traceability. This mode requires every guide ID
+to map uniquely to one construct; a guide library with one guide reused across
+multiple constructs is rejected rather than assigned ambiguously.
+
+Outputs:
+
+```text
+{out_dir}/integration/
+└── perturbation_adata_construct.h5ad
+```
+
+The selected artifact is named according to its representation:
+
+```text
+perturbation_adata_guide_top1.h5ad
+perturbation_adata_guide_full.h5ad
+perturbation_adata_construct.h5ad
+```
+
+All artifacts contain `X` (cells × genes), the original GEX `obs`/`var`,
+`obs.cell_key`, `obs.source_group`, `obs.source_cell_id`, and one
+`obs.assigned_<method>` column per assignment method. Candidate matrix
+column order is stored in `uns['guide_candidates_<method>_guides']` or
+`uns['construct_candidates_<method>_constructs']`; score-column names are
+stored in `uns['method_weights']`. Construct mode additionally stores
+`obs.assigned_construct_<method>` and `uns['guide_construct_map']`. The config,
+alignment, and provenance are recorded in `uns['config']`, `uns['integration']`,
+and `uns['manifest']`.
+
+When a specific stage target is requested, Snakemake runs only the dependency
+closure of that target. Thus extraction or assignment targets can still be
+run independently; integration is reached when its selected `.h5ad` target,
+or the default `rule all`, is requested.
+
+For example, to run the construct integration target directly:
+
+```bash
+snakemake --cores 8 \
+  /path/to/results/integration/perturbation_adata_construct.h5ad
+```
+
+---
+
 ## Configuration
 
 You need **two files** to run the workflow.
