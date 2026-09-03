@@ -180,8 +180,8 @@ assignment:
     # - fishash                   # Fisher test, needs R + fishash
 ```
 
-Multiple methods run independently; each produces its own output under
-`{out_dir}/assignment/{method}/`.
+Configure one assignment method per workflow run. Integration consumes that
+run's single standardized assignment table.
 
 ### Guide design modes & guide_csv schemas
 
@@ -288,52 +288,69 @@ assignment step, `{method}_obs.log` for the per-cell call).
 
 ## Multimodal Integration
 
-Multimodal integration is the final step of a complete preprocessing run. It
-uses the GEX matrix and one standardized assignment output; it does not modify
-the upstream MEX or assignment files.
+Integration is the final step of the complete preprocessing workflow. It joins
+the GEX matrix with the assignment result, classifies assignment structure, and
+exports the standardized input for perturbation status estimation.
+
+The assignment design is inherited from `assignment.guide_design`:
 
 ```yaml
-integration:
-  mode: construct           # guide_top1 | guide_full | construct
+assignment:
+  guide_design: single       # single | dual | multi
 ```
 
-The integration input is the `gex_h5` field in `groups.yaml` plus the single
-assignment method configured under `assignment.methods`. Supported expression
-formats are `.h5`, `.h5ad`, and `.h5mu` (`rna` modality). Gene order must agree
-across GEX inputs; cell IDs are normalized automatically to the available lane
-and barcode convention. Large sparse h5ad files are read in backed mode.
+For standalone use, provide `--guide-design single|dual|multi`. `dual` and
+`multi` require a guide-to-construct library (`assignment.guide_csv` or the
+top-level `guide_csv`). Supported expression formats are `.h5`, `.h5ad`, and
+`.h5mu` (`rna` modality).
 
-Modes:
+Each cell receives one `assignment_structure` value:
 
-| Mode | Contents | Use |
-|---|---|---|
-| `guide_top1` | `obs.assigned_guide` | Only the top-ranked assigned guide is needed downstream |
-| `guide_full` | Top-1 column plus sparse `obsm.guide_candidates` matrix | Retain all assigned guide candidates and their native scores |
-| `construct` | Guide top-1 column, construct top-1 column, and sparse construct candidate matrix | Dual-guide or multi-guide libraries where the perturbation identity is the complete construct |
+| Value | Definition |
+|---|---|
+| `single_guide` | Exactly one valid guide |
+| `concordant_construct` | Multiple valid guides, all in one construct |
+| `mixed_construct` | Multiple valid guides in different constructs |
 
-`guide_full` retains every candidate in the assignment CSV. `construct` maps
-each guide to a construct using `assignment.guide_csv` (or the top-level
-`guide_csv`). Dual-guide libraries may use `sgID_A`/`sgID_B`; normalized
-guide-to-construct tables are also accepted. Guide mappings must be unique.
-Construct scores use the best native score per cell and construct.
+For `single` guide design, one valid guide is `single_guide` and multiple valid
+guides are `mixed_construct`. For `dual` and `multi`, a construct library is
+used to distinguish concordant from mixed assignments.
 
-Output:
+The canonical artifact contains all guide candidates and, when available,
+construct candidates:
 
 ```text
-{out_dir}/integration/
-└── perturbation_adata_{guide_top1|guide_full|construct}.h5ad
+{out_dir}/integration/perturbation_adata.h5ad
 ```
 
-The artifact contains `X`, the GEX `obs`/`var`, `obs.assigned_guide`, and the
-selected candidate matrix. Construct mode additionally stores
-`obs.assigned_construct`. Column order, score metadata, configuration, and
-provenance are recorded in `uns`.
+Expression output follows the M01 contract: `X` is `log1p(CP10K)`,
+`layers["counts"]` contains the original integer-valued counts, and common
+metadata include `guide_id`, `assigned_construct_standard`, `target_label`,
+`perturbation_group`, `is_ntc`, `batch_id`, and
+`guide_assignment_missing`. `target_label` and `perturbation_group` remain
+target-level; guide- and construct-level values are stored separately.
+Controls use the label `non-targeting`. Existing `batch_id`, `gemgroup`,
+`lane`, and replicate metadata are retained; a dataset name is not used as a
+batch label for a standalone input.
+
+`top_guide` is traceability only; it is not the final perturbation identity. A
+mixed construct cell has no single `resolved_construct`.
+
+For `.h5ad`/`.h5mu`, an existing `layers["counts"]` is used directly. A raw
+integer `.X` is accepted automatically; a raw-count floating-point `.X` must
+be declared with `--input-kind counts`. A normalized `.X` without a counts
+layer is rejected. If normalized expression and counts are in separate h5ad
+files, pass `--normalized-source` and `--counts-source`; cell and gene order
+must match exactly. Large sparse h5ad inputs are written in bounded,
+compressed CSR chunks automatically. Before processing, the workflow checks
+input nnz, estimated output size, free disk, and applies a process memory ceiling; a failed check
+stops the step without creating an output.
 
 To run only the integration target:
 
 ```bash
 snakemake --cores 8 \
-  /path/to/results/integration/perturbation_adata_construct.h5ad
+  /path/to/results/integration/perturbation_adata.h5ad
 ```
 
 ---

@@ -204,16 +204,9 @@ for _m in _assignment_methods:
     _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
 
 # Multimodal integration is the required terminal step whenever assignment is
-# configured.  It has one selected mode per run; stage-specific Snakemake
-# targets can still stop before this target (for example, at extraction or
-# assignment).
-_integration_output_names = {
-    "guide_top1": "perturbation_adata_guide_top1.h5ad",
-    "guide_full": "perturbation_adata_guide_full.h5ad",
-    "construct": "perturbation_adata_construct.h5ad",
-}
-_integration_cfg = config.get("integration", {})
-_integration_mode = _integration_cfg.get("mode", "construct")
+# configured.  It always writes one canonical artifact; stage-specific
+# Snakemake targets can still stop before this target.
+_integration_output = "perturbation_adata.h5ad"
 _integration_methods = _assignment_methods
 if _assignment_methods:
     if len(_integration_methods) != 1:
@@ -222,13 +215,13 @@ if _assignment_methods:
         )
     if _integration_methods[0] not in _assignment_methods:
         sys.exit("ERROR: integration method must be listed in assignment.methods")
-    if _integration_mode not in _integration_output_names:
+    _guide_design = config.get("assignment", {}).get("guide_design")
+    if _guide_design not in {"single", "dual", "multi"}:
         sys.exit(
-            f"ERROR: unknown integration.mode='{_integration_mode}'; "
-            f"choose from {sorted(_integration_output_names)}"
+            "ERROR: assignment.guide_design must be one of: single, dual, multi"
         )
     _assignment_targets.append(os.path.join(
-        config["out_dir"], "integration", _integration_output_names[_integration_mode]
+        config["out_dir"], "integration", _integration_output
     ))
 
 rule all:

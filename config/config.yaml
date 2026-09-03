@@ -82,9 +82,16 @@ assignment:
   # - fishash                    # Fisher exact test (needs R + fishash package)
 
 # ── Multimodal integration (required terminal step when assignment is enabled) ──
-# The GEX inputs are taken from groups.yaml, one expression matrix per group.
-# Select exactly one output representation for each complete workflow run:
-# guide_top1 | guide_full | construct.
+# Produces one canonical perturbation_adata.h5ad artifact.
 integration:
-  mode: construct                    # guide_top1 | guide_full | construct
-  # dataset: workflow                # provenance label only
+  input_kind: auto                    # auto | counts | standardized
+  counts_layer: counts                # layer used for h5ad/h5mu inputs
+  # counts_source: /path/to/aligned_counts.h5ad
+  # normalized_source: /path/to/aligned_normalized.h5ad
+  target_sum: 10000                   # used when normalization is computed
+  max_materialized_nnz: 100000000     # switch to bounded CSR streaming above this
+  stream_chunk_nnz: 50000000          # approximate per-block nnz limit
+  max_input_nnz: 5000000000            # abort before processing above this
+  max_output_gb: 250                   # abort if estimated output is larger
+  min_free_disk_gb: 200                # reserve kept free after output estimate
+  max_process_memory_gb: 192           # virtual-memory ceiling for integration
