@@ -288,63 +288,89 @@ assignment step, `{method}_obs.log` for the per-cell call).
 
 ## Multimodal Integration
 
-Integration is the final step of the complete preprocessing workflow. It joins
-the GEX matrix with the assignment result, classifies assignment structure, and
-exports the standardized input for perturbation status estimation.
+Multimodal integration combines the assignment result inherited from the
+previous step with an expression matrix. It generates the standardized AnnData
+input for downstream perturbation status estimation and subsequent steps.
 
-The assignment design is inherited from `assignment.guide_design`:
+For standalone execution, provide the assignment result and expression matrix:
 
-```yaml
-assignment:
-  guide_design: single       # single | dual | multi
+```bash
+python scripts/integrate_multimodal.py \
+  --gex dataset=/path/to/expression.h5ad \
+  --assign /path/to/assignments.csv \
+  --guide-design dual \
+  --guide-csv /path/to/guide_library.csv \
+  --out /path/to/perturbation_adata.h5ad
 ```
 
-For standalone use, provide `--guide-design single|dual|multi`. `dual` and
-`multi` require a guide-to-construct library (`assignment.guide_csv` or the
-top-level `guide_csv`). Supported expression formats are `.h5`, `.h5ad`, and
-`.h5mu` (`rna` modality).
+`guide_design` is one of:
 
-Each cell receives one `assignment_structure` value:
+```text
+single | dual | multi
+```
+
+`dual` and `multi` require a guide-to-construct library. Supported expression
+formats are `.h5`, `.h5ad`, and `.h5mu` (`rna` modality).
+
+### Expression contract
+
+```text
+X                    normalized expression
+layers["counts"]     original counts
+```
+
+Input handling:
+
+- If `layers["counts"]` exists, it is used as the original counts layer.
+- Integer-valued `.X` is automatically recognized as raw counts.
+- Floating-point `.X` is not automatically recognized as raw counts. Use
+  `--input-kind counts` only when the input is verified to contain raw counts.
+- A normalized `.X` without `layers["counts"]` is rejected and the workflow
+  terminates without producing an output.
+
+For raw counts, `X` is computed as per-cell `log1p(CP10K)`:
+
+```text
+log1p(counts / cell_total × 10000)
+```
+
+### Assignment structure
 
 | Value | Definition |
 |---|---|
-| `single_guide` | Exactly one valid guide |
-| `concordant_construct` | Multiple valid guides, all in one construct |
-| `mixed_construct` | Multiple valid guides in different constructs |
+| `single_guide` | One valid guide |
+| `concordant_construct` | Multiple valid guides mapped to one construct |
+| `mixed_construct` | Multiple valid guides mapped to different constructs |
 
-For `single` guide design, one valid guide is `single_guide` and multiple valid
-guides are `mixed_construct`. For `dual` and `multi`, a construct library is
-used to distinguish concordant from mixed assignments.
+For `single` guide designs, multiple valid guides are classified as
+`mixed_construct`.
 
-The canonical artifact contains all guide candidates and, when available,
-construct candidates:
+### Output metadata
+
+| Field | Meaning |
+|---|---|
+| `guide_id`, `top_guide` | Guide-level traceability |
+| `assigned_construct_standard`, `resolved_construct` | Construct-level identity |
+| `target_label`, `perturbation_group` | Target-level identity and grouping |
+| `is_ntc` | Non-targeting control indicator |
+| `batch_id` | Batch, lane, or replicate identifier |
+| `guide_assignment_missing` | Missing assignment indicator |
+
+Control cells use the canonical label `non-targeting`.
+
+### Output
+
+The workflow writes one H5AD file:
 
 ```text
 {out_dir}/integration/perturbation_adata.h5ad
 ```
 
-Expression output follows the M01 contract: `X` is `log1p(CP10K)`,
-`layers["counts"]` contains the original integer-valued counts, and common
-metadata include `guide_id`, `assigned_construct_standard`, `target_label`,
-`perturbation_group`, `is_ntc`, `batch_id`, and
-`guide_assignment_missing`. `target_label` and `perturbation_group` remain
-target-level; guide- and construct-level values are stored separately.
-Controls use the label `non-targeting`. Existing `batch_id`, `gemgroup`,
-`lane`, and replicate metadata are retained; a dataset name is not used as a
-batch label for a standalone input.
-
-`top_guide` is traceability only; it is not the final perturbation identity. A
-mixed construct cell has no single `resolved_construct`.
-
-For `.h5ad`/`.h5mu`, an existing `layers["counts"]` is used directly. A raw
-integer `.X` is accepted automatically; a raw-count floating-point `.X` must
-be declared with `--input-kind counts`. A normalized `.X` without a counts
-layer is rejected. If normalized expression and counts are in separate h5ad
-files, pass `--normalized-source` and `--counts-source`; cell and gene order
-must match exactly. Large sparse h5ad inputs are written in bounded,
-compressed CSR chunks automatically. Before processing, the workflow checks
-input nnz, estimated output size, free disk, and applies a process memory ceiling; a failed check
-stops the step without creating an output.
+The single output file contains the expression matrix, original counts, source
+metadata, assignment candidates, construct information, and standardized
+assignment fields. Guide candidates are stored in `obsm["guide_candidates"]`;
+construct candidates are stored in `obsm["construct_candidates"]` when a
+construct library is supplied.
 
 To run only the integration target:
 
