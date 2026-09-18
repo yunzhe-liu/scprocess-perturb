@@ -1,0 +1,17 @@
+name: scprocess-perturb-ps
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - anndata
+  - h5py
+  - numpy
+  - pandas
+  - scipy
+  - pyyaml
+  - r-base=4.5.3
+  - r-seurat
+  - r-jsonlite
+  - r-rcpp
+  - r-ggplot2
+  - r-remotes

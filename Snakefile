@@ -173,6 +173,25 @@ _asgn = config.setdefault("assignment", {})
 _asgn.setdefault("guide_csv", config.get("guide_csv", ""))
 _asgn.setdefault("methods", [])
 
+_status = config.setdefault("perturbation_status", {})
+_status.setdefault("method", "none")
+_status_method = str(_status["method"]).lower()
+if _status_method not in {"none", "mixscape", "ps"}:
+    sys.exit(
+        "ERROR: perturbation_status.method must be one of: none, mixscape, ps"
+    )
+if _status_method != "none" and not _asgn.get("methods"):
+    sys.exit(
+        "ERROR: perturbation status estimation requires assignment and integration"
+    )
+if _status_method == "mixscape" and _status.get("perturbation_type") not in {
+    "KO", "CRISPRa", "CRISPRi"
+}:
+    sys.exit(
+        "ERROR: Mixscape requires perturbation_status.perturbation_type "
+        "to be one of: KO, CRISPRa, CRISPRi"
+    )
+
 
 # ---- Method selection ----
 # Supported: "simpleaf" (default) | "hash_matcher"
@@ -203,9 +222,8 @@ for _m in _assignment_methods:
     _assignment_targets.append(os.path.join(_base, "assignments.csv"))
     _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
 
-# Multimodal integration is the required terminal step whenever assignment is
-# configured.  It always writes one canonical artifact; stage-specific
-# Snakemake targets can still stop before this target.
+# Multimodal integration is required whenever assignment is configured and
+# writes one canonical artifact for optional downstream status estimation.
 _integration_output = "perturbation_adata.h5ad"
 _integration_methods = _assignment_methods
 if _assignment_methods:
@@ -222,6 +240,12 @@ if _assignment_methods:
         )
     _assignment_targets.append(os.path.join(
         config["out_dir"], "integration", _integration_output
+    ))
+
+if _status_method != "none":
+    _assignment_targets.append(os.path.join(
+        config["out_dir"], "perturbation_status", _status_method,
+        "perturbation_status.tsv.gz"
     ))
 
 rule all:
@@ -248,3 +272,6 @@ if _assignment_methods:
 
 if _assignment_methods:
     include: "rules/integration.smk"
+
+if _status_method != "none":
+    include: "rules/perturbation_status.smk"

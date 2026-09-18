@@ -381,6 +381,46 @@ snakemake --cores 8 \
 
 ---
 
+## Perturbation-status estimation
+
+This optional stage runs after multimodal integration and is disabled by
+default:
+
+```yaml
+perturbation_status:
+  method: none                 # none | mixscape | ps
+```
+
+Select one method per run. Mixscape also requires the experimental
+perturbation type:
+
+```yaml
+perturbation_status:
+  method: mixscape
+  perturbation_type: CRISPRi   # KO | CRISPRa | CRISPRi
+  shards: 4
+  max_workers: 1
+  memory_gb: 64
+```
+
+PS is selected with `method: ps`. Both methods use `single_guide` and
+`concordant_construct` cells and retain the complete eligible non-targeting
+control pool. The integration H5AD remains unchanged.
+
+```text
+{out_dir}/perturbation_status/{method}/
+├── perturbation_status.tsv.gz
+├── validation.json
+└── run_manifest.json
+```
+
+The result table contains `cell_id`, `target_label`, `is_ntc`,
+`assignment_structure`, `method`, `score`, `native_status`, `scorable`, and
+`unscorable_reason`. PS reports a continuous score without imposing a binary
+perturbation threshold.
+
+---
+
 ## Configuration
 
 You need **two files** to run the workflow.

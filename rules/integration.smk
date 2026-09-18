@@ -1,9 +1,8 @@
 # ==============================================================================
 # integration.smk — GEX + guide-assignment AnnData export
 # ==============================================================================
-# This is the terminal step of the complete workflow. Existing MEX and
-# assignment outputs remain unchanged; integration produces one canonical
-# AnnData artifact.
+# Existing MEX and assignment outputs remain unchanged; integration produces
+# one canonical AnnData artifact for downstream processing.
 #
 # Input cell universe: concatenated per-group GEX cells.
 # Cell keys: normalized 16mer + the same group suffix used by merge.smk.

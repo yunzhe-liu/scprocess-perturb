@@ -95,3 +95,14 @@ integration:
   max_output_gb: 250                   # abort if estimated output is larger
   min_free_disk_gb: 200                # reserve kept free after output estimate
   max_process_memory_gb: 192           # virtual-memory ceiling for integration
+
+# ── Perturbation-status estimation ──
+# Disabled by default because both supported methods are computationally heavy.
+perturbation_status:
+  method: none                         # none | mixscape | ps
+  # perturbation_type: CRISPRi         # required for Mixscape: KO | CRISPRa | CRISPRi
+  # shards: 4
+  # max_workers: 1
+  # memory_gb: 64
+  # min_target_cells: 3
+  # seed: 20260902
