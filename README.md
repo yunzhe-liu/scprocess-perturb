@@ -58,7 +58,7 @@ for all standard 10x direct-capture chemistries.
                                      │
                                      ▼
                     ┌─────────────────────────────────────┐
-                    │  final QC and standardization       │
+                    │  QC and standardization             │
                     │  validate + fixed downstream schema │
                     └────────────────┬────────────────────┘
                                      │
@@ -86,7 +86,8 @@ conda env create -f envs/simpleaf.lock.yaml
 #   config/groups.yaml    — input file paths per lane
 # Then:
 conda activate scp_analysis
-snakemake --configfile config/config.yaml --cores 48
+snakemake --use-conda --conda-frontend conda \
+  --configfile config/config.yaml --cores 48
 ```
 
 By default the workflow runs `pgmm_em` assignment on `guide_design: dual`.
@@ -396,7 +397,7 @@ construct library is supplied.
 To run only the integration target:
 
 ```bash
-snakemake --cores 8 \
+snakemake --use-conda --conda-frontend conda --cores 8 \
   /path/to/results/integration/perturbation_adata.h5ad
 ```
 
@@ -442,7 +443,7 @@ perturbation threshold.
 
 ---
 
-## Final QC and standardization
+## QC and standardization
 
 The complete workflow ends with one standardized AnnData file:
 
@@ -660,7 +661,7 @@ hash_matcher:
 | `simpleaf` | simpleaf ≥ 0.24, piscem ≥ 0.19, alevin-fry ≥ 0.14 | simpleaf quant |
 | `mixscape` | R, Seurat, Mixscape dependencies | Optional Mixscape status estimation |
 | `ps` | R, Seurat, scMAGeCK dependencies | Optional PS status estimation |
-| `finalization` | Python, AnnData, h5py | Final validation and standardized output |
+| `finalization` | Python, AnnData, h5py | QC validation and standardized output |
 
 ```bash
 conda activate scp_analysis    # Snakemake + HAM + merge + assignment
@@ -682,7 +683,8 @@ conda activate simpleaf        # simpleaf quant
 ```bash
 cd /path/to/scprocess-perturb
 conda activate scp_analysis
-snakemake --configfile config/config.yaml --cores 48
+snakemake --use-conda --conda-frontend conda \
+  --configfile config/config.yaml --cores 48
 ```
 
 Common Snakemake options:
@@ -759,7 +761,7 @@ scprocess-perturb/
 │   ├── assignment.smk            ← Guide assignment
 │   ├── integration.smk           ← Expression + assignment AnnData
 │   ├── perturbation_status.smk   ← Optional Mixscape or PS
-│   └── finalization.smk          ← Final QC and standardization
+│   └── finalization.smk          ← QC and standardization
 ├── scripts/
 │   ├── feature_reference_adapter.py ← Guide FASTA / t2g from CSV
 │   ├── build_guide_hash.py       ← HAM hash table builder

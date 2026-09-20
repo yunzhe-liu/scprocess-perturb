@@ -107,7 +107,7 @@ perturbation_status:
   # min_target_cells: 3
   # seed: 20260902
 
-# ── Final QC and standardization ──
+# ── QC and standardization ──
 # Always runs after integration or the selected perturbation-status method.
 # It validates and preserves X/counts; no cell or gene filtering is performed.
 finalization:

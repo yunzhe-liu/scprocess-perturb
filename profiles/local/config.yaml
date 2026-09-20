@@ -14,12 +14,9 @@ cores: 8
 # Print shell commands to log
 printshellcmds: true
 
-# Conda environments
-# Each rule auto-detects and activates its env in the shell block
-# (reuses if exists, creates from lock file if missing).
-# conda: directives are kept as declaration / documentation.
-# Set to true for Snakemake-native conda management.
-use-conda: false
+# Create and activate each rule's declared environment.
+use-conda: true
+conda-frontend: conda
 
 # NFS filesystem latency tolerance
 latency-wait: 60
