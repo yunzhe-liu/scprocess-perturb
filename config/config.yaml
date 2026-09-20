@@ -81,7 +81,7 @@ assignment:
   # - umi_threshold              # simple UMI >= threshold filter (default t=3)
   # - fishash                    # Fisher exact test (needs R + fishash package)
 
-# ── Multimodal integration (required terminal step when assignment is enabled) ──
+# ── Multimodal integration ──
 # Produces one canonical perturbation_adata.h5ad artifact.
 integration:
   input_kind: auto                    # auto | counts | standardized
@@ -106,3 +106,12 @@ perturbation_status:
   # memory_gb: 64
   # min_target_cells: 3
   # seed: 20260902
+
+# ── Final QC and standardization ──
+# Always runs after integration or the selected perturbation-status method.
+# It validates and preserves X/counts; no cell or gene filtering is performed.
+finalization:
+  memory_gb: 16
+  scan_chunk_values: 10000000
+  max_input_gb: 300
+  min_free_disk_gb: 100

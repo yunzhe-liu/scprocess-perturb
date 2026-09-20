@@ -248,6 +248,12 @@ if _status_method != "none":
         "perturbation_status.tsv.gz"
     ))
 
+if _assignment_methods:
+    _assignment_targets.extend([
+        os.path.join(config["out_dir"], "final", "perturbation_adata.h5ad"),
+        os.path.join(config["out_dir"], "final", "qc_report.json"),
+    ])
+
 rule all:
     input:
         os.path.join(config["out_dir"], "guide_matrix", "merged_matrix.mtx.gz"),
@@ -275,3 +281,6 @@ if _assignment_methods:
 
 if _status_method != "none":
     include: "rules/perturbation_status.smk"
+
+if _assignment_methods:
+    include: "rules/finalization.smk"

@@ -1,7 +1,7 @@
 # scprocess-perturb
 ## A Single-Cell Perturbation Screen Preprocessing Workflow
 
-**From Perturb-seq FASTQ to per-cell perturbation calls.** Extracts sgRNA guide
+**From Perturb-seq FASTQ to standardized perturbation AnnData.** Extracts sgRNA guide
 counts via simpleaf (piscem + alevin-fry) or [HAM](https://github.com/yunzhe-liu/ham)
 (Hash-Accelerated Matcher), then assigns each cell a perturbation identity via
 PGMM EM, UMI threshold, or fishash. A single `tenx_chemistry` setting
@@ -43,12 +43,33 @@ for all standard 10x direct-capture chemistries.
                                      │
                                      ▼
                           perturbation_obs.csv
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────┐
+                    │  multimodal integration             │
+                    │  expression + assignment → AnnData  │
+                    └────────────────┬────────────────────┘
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────┐
+                    │  perturbation-status estimation     │
+                    │  none (skip) / Mixscape / PS        │
+                    └────────────────┬────────────────────┘
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────┐
+                    │  final QC and standardization       │
+                    │  validate + fixed downstream schema │
+                    └────────────────┬────────────────────┘
+                                     │
+                                     ▼
+                         final/perturbation_adata.h5ad
 ```
 
 **Guide extraction** produces a per-lane (cells × guides) UMI count matrix in
 standard MEX format under `guide_matrix/`. **Guide assignment** converts that
-matrix into per-cell perturbation calls — `perturbation_obs.csv` — ready to
-join into expression AnnData or MuData objects.
+matrix into per-cell perturbation calls. Multimodal integration and finalization
+produce the standardized AnnData used by downstream analyses.
 
 ---
 
@@ -421,6 +442,50 @@ perturbation threshold.
 
 ---
 
+## Final QC and standardization
+
+The complete workflow ends with one standardized AnnData file:
+
+```text
+{out_dir}/final/
+├── perturbation_adata.h5ad
+└── qc_report.json
+```
+
+Finalization validates and preserves the expression contract:
+
+```text
+.X                  normalized, log-transformed expression inherited from integration
+layers["counts"]   original integer-valued counts
+```
+
+It does not normalize, rescale, filter cells, filter genes, or change cell and
+gene order. Full expression and counts checksums are verified after writing.
+
+The following `.obs` fields are always present:
+
+```text
+perturbation_status_method
+perturbation_status_score
+perturbation_status_label
+perturbation_status_scorable
+perturbation_status_reason
+```
+
+With `perturbation_status.method: none`, method is `none`, score and label are
+missing, scorable is `False`, and reason is `not_run`. With Mixscape or PS, the
+status table must cover every `single_guide` and `concordant_construct` cell
+exactly once. Other cells are retained with reason `not_eligible`.
+
+```yaml
+finalization:
+  memory_gb: 16
+  max_input_gb: 300
+  min_free_disk_gb: 100
+```
+
+---
+
 ## Configuration
 
 You need **two files** to run the workflow.
@@ -593,6 +658,9 @@ hash_matcher:
 |-------------|----------|---------|
 | `scp_analysis` | Snakemake, HAM, numpy, scipy, h5py, anndata, mudata | Orchestration, HAM quant, merge, assignment |
 | `simpleaf` | simpleaf ≥ 0.24, piscem ≥ 0.19, alevin-fry ≥ 0.14 | simpleaf quant |
+| `mixscape` | R, Seurat, Mixscape dependencies | Optional Mixscape status estimation |
+| `ps` | R, Seurat, scMAGeCK dependencies | Optional PS status estimation |
+| `finalization` | Python, AnnData, h5py | Final validation and standardized output |
 
 ```bash
 conda activate scp_analysis    # Snakemake + HAM + merge + assignment
@@ -656,10 +724,16 @@ has no public mirror and must be copied manually from Cell Ranger ≥ 8.0.1.
 │   ├── merged_matrix.mtx.gz       ← cells × guides UMI count matrix
 │   ├── merged_barcodes.tsv.gz     ← cell barcodes (-L{NN} suffix)
 │   └── merged_features.tsv.gz     ← guide feature IDs
-└── assignment/
-    └── {method}/
-        ├── assignments.csv         ← unified schema (all guides, ranked)
-        └── perturbation_obs.csv    ← per-cell perturbation call
+├── assignment/
+│   └── {method}/
+│       ├── assignments.csv         ← unified schema (all guides, ranked)
+│       └── perturbation_obs.csv    ← per-cell perturbation call
+├── integration/
+│   └── perturbation_adata.h5ad     ← expression + assignment
+├── perturbation_status/            ← present when Mixscape or PS is selected
+└── final/
+    ├── perturbation_adata.h5ad     ← workflow final output
+    └── qc_report.json              ← validation and provenance
 ```
 
 The workflow also generates intermediate artefacts during reference setup:
@@ -682,7 +756,10 @@ scprocess-perturb/
 │   ├── quant.smk                 ← simpleaf quantification
 │   ├── guide_quant.smk           ← HAM quantification
 │   ├── merge.smk                 ← Per-lane merge + barcode translation
-│   └── assignment.smk            ← Guide assignment
+│   ├── assignment.smk            ← Guide assignment
+│   ├── integration.smk           ← Expression + assignment AnnData
+│   ├── perturbation_status.smk   ← Optional Mixscape or PS
+│   └── finalization.smk          ← Final QC and standardization
 ├── scripts/
 │   ├── feature_reference_adapter.py ← Guide FASTA / t2g from CSV
 │   ├── build_guide_hash.py       ← HAM hash table builder
@@ -694,11 +771,15 @@ scprocess-perturb/
 │   ├── run_umi_threshold.py      ← umi_threshold assignment
 │   ├── run_fishash.R             ← fishash assignment (R)
 │   ├── standardize_assignment.py ← Method CSV → unified schema
-│   └── make_perturbation_obs.py  ← Unified schema → per-cell call
+│   ├── make_perturbation_obs.py  ← Unified schema → per-cell call
+│   ├── finalize_perturbation_adata.py
+│   └── validate_final_adata.py
 ├── envs/
 │   ├── simpleaf.lock.yaml
-│   └── scp_analysis.lock.yaml
-└── profiles/local/
+│   ├── scp_analysis.lock.yaml
+│   └── finalization.yaml
+└── tests/
+    └── test_finalization.py
 ```
 
 ---
@@ -716,6 +797,9 @@ scprocess-perturb/
 5. **`assignment.smk`** — Runs guide assignment on merged MEX, standardises
    output, produces per-cell perturbation calls. Skipped when `assignment:`
    is absent from config.
+6. **`integration.smk`** — Combines expression and assignment into AnnData.
+7. **`perturbation_status.smk`** — Optionally runs Mixscape or PS.
+8. **`finalization.smk`** — Validates and writes the final standardized H5AD.
 
 ---
 
