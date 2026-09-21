@@ -20,6 +20,7 @@ rule perturbation_status_estimation:
         shards = int(STATUS_CONFIG.get("shards", 4)),
         max_workers = int(STATUS_CONFIG.get("max_workers", 1)),
         min_target_cells = int(STATUS_CONFIG.get("min_target_cells", 3)),
+        feature_mode = STATUS_CONFIG.get("feature_mode", "auto"),
         seed = int(STATUS_CONFIG.get("seed", 20260902)),
         script = os.path.join(
             config["proj_dir"], "scripts", "run_perturbation_status.py"
@@ -47,6 +48,7 @@ rule perturbation_status_estimation:
             --shards "{params.shards}" \
             --max-workers "{params.max_workers}" \
             --min-target-cells "{params.min_target_cells}" \
+            --feature-mode "{params.feature_mode}" \
             --seed "{params.seed}" \
             > "{log}" 2>&1
         """

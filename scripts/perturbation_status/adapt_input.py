@@ -12,6 +12,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 import yaml
 
 
@@ -139,6 +140,119 @@ def write_matrix_market(
     return nnz
 
 
+def resolve_feature_mode(feature_names: list[str], requested: str) -> tuple[str, list[str]]:
+    """Resolve gene-level versus strict alevin-fry S/U/A block input."""
+    if requested not in {"auto", "gene", "usa_sa"}:
+        raise ValueError("feature_mode must be one of: auto, gene, usa_sa")
+    exact_usa = False
+    base_names: list[str] = []
+    if len(feature_names) % 3 == 0:
+        n_genes = len(feature_names) // 3
+        suffixes = [name.rsplit("_", 1)[-1] for name in feature_names]
+        bases = [name.rsplit("_", 1)[0] for name in feature_names]
+        exact_usa = (
+            suffixes == ["S"] * n_genes + ["U"] * n_genes + ["A"] * n_genes
+            and bases[:n_genes] == bases[n_genes : 2 * n_genes] == bases[2 * n_genes :]
+        )
+        if exact_usa:
+            base_names = bases[:n_genes]
+    usa_suffix_count = sum(name.endswith(("_S", "_U", "_A")) for name in feature_names)
+    suspected_usa = usa_suffix_count >= max(3, len(feature_names) // 10)
+    if requested == "usa_sa" and not exact_usa:
+        raise ValueError("feature_mode=usa_sa requires complete contiguous S/U/A feature blocks")
+    if requested == "auto":
+        if exact_usa:
+            return "usa_sa", base_names
+        if suspected_usa:
+            raise ValueError("Input resembles USA features but fails the strict S/U/A block contract")
+        return "gene", feature_names
+    return requested, base_names if requested == "usa_sa" else feature_names
+
+
+def aggregate_usa_block(
+    matrix: h5py.Group,
+    indptr: np.ndarray,
+    source_start: int,
+    source_end: int,
+    selected_rows: np.ndarray,
+    n_genes: int,
+) -> sp.csr_matrix:
+    data_start = int(indptr[source_start])
+    data_end = int(indptr[source_end])
+    raw = sp.csr_matrix(
+        (
+            np.asarray(matrix["data"][data_start:data_end]),
+            np.asarray(matrix["indices"][data_start:data_end], dtype=np.int64),
+            indptr[source_start : source_end + 1] - data_start,
+        ),
+        shape=(source_end - source_start, 3 * n_genes),
+    )
+    if not np.all(np.equal(raw.data, np.rint(raw.data))):
+        raise ValueError("layers['counts'] contains non-integer values")
+    selected = raw[selected_rows - source_start]
+    aggregated = (selected[:, :n_genes] + selected[:, 2 * n_genes :]).tocsr()
+    aggregated.sum_duplicates()
+    aggregated.eliminate_zeros()
+    return aggregated
+
+
+def iter_usa_blocks(
+    source_h5ad: Path,
+    row_indices: np.ndarray,
+    n_genes: int,
+    row_chunk_size: int,
+):
+    with h5py.File(source_h5ad, "r") as handle:
+        matrix = handle["layers/counts"]
+        if decode_scalar(matrix.attrs.get("encoding-type", "")) != "csr_matrix":
+            raise ValueError("USA S+A aggregation requires a CSR counts layer")
+        indptr = np.asarray(matrix["indptr"][:], dtype=np.int64)
+        n_source_cells = len(indptr) - 1
+        for source_start in range(0, n_source_cells, row_chunk_size):
+            source_end = min(source_start + row_chunk_size, n_source_cells)
+            selected_rows = row_indices[
+                (row_indices >= source_start) & (row_indices < source_end)
+            ]
+            if selected_rows.size:
+                yield aggregate_usa_block(
+                    matrix, indptr, source_start, source_end, selected_rows, n_genes
+                )
+
+
+def write_usa_sa_matrix(
+    source_h5ad: Path,
+    output_path: Path,
+    row_indices: np.ndarray,
+    n_genes: int,
+    row_chunk_size: int,
+) -> int:
+    expected_nnz = sum(
+        int(block.nnz)
+        for block in iter_usa_blocks(source_h5ad, row_indices, n_genes, row_chunk_size)
+    )
+    written_nnz = 0
+    written_cells = 0
+    with gzip.open(output_path, "wt", encoding="utf-8", compresslevel=1) as stream:
+        stream.write("%%MatrixMarket matrix coordinate integer general\n")
+        stream.write("% Gene-level counts aggregated from USA features as S+A; U excluded.\n")
+        stream.write(f"{n_genes} {len(row_indices)} {expected_nnz}\n")
+        for block in iter_usa_blocks(source_h5ad, row_indices, n_genes, row_chunk_size):
+            columns = np.repeat(
+                np.arange(written_cells, written_cells + block.shape[0], dtype=np.int64) + 1,
+                np.diff(block.indptr),
+            )
+            entries = np.column_stack(
+                (block.indices.astype(np.int64) + 1, columns, block.data.astype(np.int64))
+            )
+            if entries.size:
+                np.savetxt(stream, entries, fmt="%d %d %d")
+            written_nnz += int(block.nnz)
+            written_cells += block.shape[0]
+    if written_cells != len(row_indices) or written_nnz != expected_nnz:
+        raise RuntimeError("USA S+A write coverage mismatch")
+    return written_nnz
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
@@ -148,6 +262,7 @@ def main() -> None:
     output_dir = Path(config["input_dir"])
     selection = config.get("selection", {})
     row_chunk_size = int(config.get("row_chunk_size", 512))
+    requested_feature_mode = str(config.get("feature_mode", "auto"))
     if not source_h5ad.is_file():
         raise FileNotFoundError(source_h5ad)
 
@@ -155,6 +270,9 @@ def main() -> None:
         n_cells, n_features = map(int, handle["X"].attrs["shape"])
         obs_names = read_index(handle["obs"], "_index")
         feature_names = read_index(handle["var"], "_index")
+        feature_mode, output_feature_names = resolve_feature_mode(
+            feature_names, requested_feature_mode
+        )
         target_label = read_obs_column(handle["obs"]["target_label"])
         is_ntc = [as_bool(value) for value in read_obs_column(handle["obs"]["is_ntc"])]
         assignment_structure = read_obs_column(handle["obs"]["assignment_structure"])
@@ -199,10 +317,25 @@ def main() -> None:
     metadata["gene"] = metadata["target_label"]
     metadata.to_csv(output_dir / "metadata.tsv.gz", sep="\t", compression="gzip")
     features = pd.DataFrame(
-        {"gene_id": feature_names, "gene_name": feature_names, "feature_type": "Gene Expression"}
+        {
+            "gene_id": output_feature_names,
+            "gene_name": output_feature_names,
+            "feature_type": "Gene Expression",
+        }
     )
     features.to_csv(output_dir / "features.tsv.gz", sep="\t", header=False, index=False, compression="gzip")
-    nnz = write_matrix_market(source_h5ad, output_dir / "counts.mtx.gz", row_indices, n_features, row_chunk_size)
+    if feature_mode == "usa_sa":
+        nnz = write_usa_sa_matrix(
+            source_h5ad, output_dir / "counts.mtx.gz", row_indices,
+            len(output_feature_names), row_chunk_size,
+        )
+        counts_source = "layers/counts; gene-level S+A aggregation; U excluded"
+    else:
+        nnz = write_matrix_market(
+            source_h5ad, output_dir / "counts.mtx.gz", row_indices,
+            n_features, row_chunk_size,
+        )
+        counts_source = "layers/counts"
 
     manifest = {
         "module": "M03",
@@ -210,9 +343,12 @@ def main() -> None:
         "dataset": config["dataset"],
         "source_h5ad": str(source_h5ad.resolve()),
         "source_shape": [n_cells, n_features],
-        "output_shape": [int(n_features), int(row_indices.size)],
+        "output_shape": [int(len(output_feature_names)), int(row_indices.size)],
         "counts_nnz": nnz,
-        "counts_source": "layers/counts",
+        "counts_source": counts_source,
+        "feature_mode_requested": requested_feature_mode,
+        "feature_mode_resolved": feature_mode,
+        "usa_aggregation": "S+A; U excluded" if feature_mode == "usa_sa" else None,
         "selection": selection,
         "selected_cells": int(row_indices.size),
         "selected_ntc_cells": int(sum(is_ntc[index] is True for index in row_indices)),

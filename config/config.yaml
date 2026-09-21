@@ -100,6 +100,7 @@ integration:
 # Disabled by default because both supported methods are computationally heavy.
 perturbation_status:
   method: none                         # none | mixscape | ps
+  feature_mode: auto                   # auto | gene | usa_sa
   # perturbation_type: CRISPRi         # required for Mixscape: KO | CRISPRa | CRISPRi
   # shards: 4
   # max_workers: 1

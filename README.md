@@ -411,6 +411,7 @@ default:
 ```yaml
 perturbation_status:
   method: none                 # none | mixscape | ps
+  feature_mode: auto           # auto | gene | usa_sa
 ```
 
 Select one method per run. Mixscape also requires the experimental
@@ -427,7 +428,12 @@ perturbation_status:
 
 PS is selected with `method: ps`. Both methods use `single_guide` and
 `concordant_construct` cells and retain the complete eligible non-targeting
-control pool. The integration H5AD remains unchanged.
+control pool. Gene-level input is used unchanged. In `auto` mode, a complete,
+ordered S/U/A feature layout is detected strictly and converted to gene-level
+counts as S+A; U is excluded. A malformed S/U/A-like layout stops with an
+error. Use `gene` or `usa_sa` to require either layout explicitly. This
+conversion is limited to the method input; the integration H5AD remains
+unchanged.
 
 ```text
 {out_dir}/perturbation_status/{method}/

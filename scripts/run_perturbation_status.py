@@ -35,13 +35,16 @@ def write_yaml(path: Path, value: dict) -> None:
     path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
 
 
-def prepare_input(source: Path, work: Path, scripts: Path, dataset: str) -> Path:
+def prepare_input(
+    source: Path, work: Path, scripts: Path, dataset: str, feature_mode: str
+) -> tuple[Path, dict]:
     input_dir = work / "input"
     config = {
         "dataset": dataset,
         "source_h5ad": str(source.resolve()),
         "input_dir": str(input_dir),
         "row_chunk_size": 512,
+        "feature_mode": feature_mode,
         "selection": {
             "mode": "eligible",
             "eligible_assignment_structures": ELIGIBLE_STRUCTURES,
@@ -52,7 +55,8 @@ def prepare_input(source: Path, work: Path, scripts: Path, dataset: str) -> Path
     config_path = work / "adapter.yaml"
     write_yaml(config_path, config)
     run([sys.executable, str(scripts / "adapt_input.py"), "--config", str(config_path)])
-    return input_dir
+    adapter_manifest = json.loads((input_dir / "adapter_manifest.json").read_text())
+    return input_dir, adapter_manifest
 
 
 def run_mixscape(args, input_dir: Path, work: Path, scripts: Path) -> Path:
@@ -232,6 +236,9 @@ def main() -> None:
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--min-target-cells", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260902)
+    parser.add_argument(
+        "--feature-mode", choices=("auto", "gene", "usa_sa"), default="auto"
+    )
     args = parser.parse_args()
     if args.method == "mixscape" and args.perturbation_type not in {"KO", "CRISPRa", "CRISPRi"}:
         parser.error("Mixscape requires --perturbation-type KO, CRISPRa, or CRISPRi")
@@ -242,7 +249,9 @@ def main() -> None:
     work.mkdir(exist_ok=True)
     scripts = Path(__file__).resolve().parent / "perturbation_status"
     started = time.time()
-    input_dir = prepare_input(args.input, work, scripts, args.input.stem)
+    input_dir, adapter_manifest = prepare_input(
+        args.input, work, scripts, args.input.stem, args.feature_mode
+    )
     native = run_mixscape(args, input_dir, work, scripts) if args.method == "mixscape" else run_ps(args, input_dir, work, scripts)
     destination = args.output_dir / "perturbation_status.tsv.gz"
     summary = standardize(args.method, native, input_dir / "metadata.tsv.gz", destination)
@@ -253,6 +262,9 @@ def main() -> None:
         "eligible_assignment_structures": ELIGIBLE_STRUCTURES,
         "min_target_cells": args.min_target_cells, "shards_requested": args.shards,
         "max_workers_requested": args.max_workers, "wall_seconds": time.time() - started,
+        "feature_mode_requested": args.feature_mode,
+        "feature_mode_resolved": adapter_manifest["feature_mode_resolved"],
+        "pse_feature_count": adapter_manifest["output_shape"][0],
     }
     (args.output_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
