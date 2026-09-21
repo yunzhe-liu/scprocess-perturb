@@ -58,7 +58,7 @@ for all standard 10x direct-capture chemistries.
                                      │
                                      ▼
                     ┌─────────────────────────────────────┐
-                    │  QC and standardization             │
+                    │ data validation and standardization │
                     │  validate + fixed downstream schema │
                     └────────────────┬────────────────────┘
                                      │
@@ -443,7 +443,7 @@ perturbation threshold.
 
 ---
 
-## QC and standardization
+## Data validation and standardization
 
 The complete workflow ends with one standardized AnnData file:
 
@@ -661,7 +661,7 @@ hash_matcher:
 | `simpleaf` | simpleaf ≥ 0.24, piscem ≥ 0.19, alevin-fry ≥ 0.14 | simpleaf quant |
 | `mixscape` | R, Seurat, Mixscape dependencies | Optional Mixscape status estimation |
 | `ps` | R, Seurat, scMAGeCK dependencies | Optional PS status estimation |
-| `finalization` | Python, AnnData, h5py | QC validation and standardized output |
+| `finalization` | Python, AnnData, h5py | Data validation and standardized output |
 
 ```bash
 conda activate scp_analysis    # Snakemake + HAM + merge + assignment
@@ -761,7 +761,7 @@ scprocess-perturb/
 │   ├── assignment.smk            ← Guide assignment
 │   ├── integration.smk           ← Expression + assignment AnnData
 │   ├── perturbation_status.smk   ← Optional Mixscape or PS
-│   └── finalization.smk          ← QC and standardization
+│   └── finalization.smk          ← Data validation and standardization
 ├── scripts/
 │   ├── feature_reference_adapter.py ← Guide FASTA / t2g from CSV
 │   ├── build_guide_hash.py       ← HAM hash table builder
