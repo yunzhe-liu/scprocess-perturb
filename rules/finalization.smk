@@ -25,7 +25,6 @@ rule finalize_perturbation_adata:
         unpack(_finalization_inputs),
     output:
         adata = os.path.join(config["out_dir"], "final", "perturbation_adata.h5ad"),
-        report = os.path.join(config["out_dir"], "final", "qc_report.json"),
     params:
         method = FINAL_METHOD,
         status_arg = (
@@ -56,7 +55,6 @@ rule finalize_perturbation_adata:
             --status-method "{params.method}" \
             {params.status_arg} \
             --output "{output.adata}" \
-            --report "{output.report}" \
             --scan-chunk-values "{params.scan_chunk_values}" \
             --max-input-gb "{params.max_input_gb}" \
             --min-free-disk-gb "{params.min_free_disk_gb}" \
@@ -65,8 +63,6 @@ rule finalize_perturbation_adata:
             --source "{input.adata}" \
             --final "{output.adata}" \
             --status-method "{params.method}" \
-            --report "{output.report}" \
             --chunk-values "{params.scan_chunk_values}" \
-            --merge-existing \
             >> "{log}" 2>&1
         """

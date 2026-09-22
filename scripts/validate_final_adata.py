@@ -51,7 +51,7 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--final", type=Path, required=True)
     parser.add_argument("--status-method", choices=("none", "mixscape", "ps"), required=True)
-    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
     parser.add_argument("--chunk-values", type=int, default=10_000_000)
     parser.add_argument("--merge-existing", action="store_true")
     args = parser.parse_args()
@@ -96,16 +96,17 @@ def main() -> None:
             raise ValueError("X or layers['counts'] changed during finalization")
     finally:
         backed.file.close()
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.report.with_name(args.report.name + f".partial-{os.getpid()}")
-    if args.merge_existing and args.report.exists():
-        combined = json.loads(args.report.read_text(encoding="utf-8"))
-        combined["independent_validation"] = summary
-        combined["status"] = "PASS"
-    else:
-        combined = summary
-    temporary.write_text(json.dumps(combined, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, args.report)
+    if args.report is not None:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.report.with_name(args.report.name + f".partial-{os.getpid()}")
+        if args.merge_existing and args.report.exists():
+            combined = json.loads(args.report.read_text(encoding="utf-8"))
+            combined["independent_validation"] = summary
+            combined["status"] = "PASS"
+        else:
+            combined = summary
+        temporary.write_text(json.dumps(combined, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, args.report)
     print(json.dumps(summary, indent=2))
 
 

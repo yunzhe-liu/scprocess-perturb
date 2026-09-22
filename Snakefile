@@ -249,10 +249,9 @@ if _status_method != "none":
     ))
 
 if _assignment_methods:
-    _assignment_targets.extend([
-        os.path.join(config["out_dir"], "final", "perturbation_adata.h5ad"),
-        os.path.join(config["out_dir"], "final", "qc_report.json"),
-    ])
+    _assignment_targets.append(
+        os.path.join(config["out_dir"], "final", "perturbation_adata.h5ad")
+    )
 
 rule all:
     input:

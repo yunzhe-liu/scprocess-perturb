@@ -331,7 +331,7 @@ def main() -> None:
     parser.add_argument("--status-method", choices=("none", "mixscape", "ps"), default="none")
     parser.add_argument("--status-table", type=Path)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
     parser.add_argument("--scan-chunk-values", type=int, default=10_000_000)
     parser.add_argument("--max-input-gb", type=float, default=300.0)
     parser.add_argument("--min-free-disk-gb", type=float, default=100.0)
@@ -364,10 +364,11 @@ def main() -> None:
             "min_free_disk_gb": args.min_free_disk_gb,
         },
     }
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    temporary_report = args.report.with_name(args.report.name + f".partial-{os.getpid()}")
-    temporary_report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary_report, args.report)
+    if args.report is not None:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        temporary_report = args.report.with_name(args.report.name + f".partial-{os.getpid()}")
+        temporary_report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary_report, args.report)
 
 
 if __name__ == "__main__":

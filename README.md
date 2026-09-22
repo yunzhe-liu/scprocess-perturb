@@ -454,9 +454,7 @@ perturbation threshold.
 The complete workflow ends with one standardized AnnData file:
 
 ```text
-{out_dir}/final/
-├── perturbation_adata.h5ad
-└── qc_report.json
+{out_dir}/final/perturbation_adata.h5ad
 ```
 
 Finalization validates and preserves the expression contract:
@@ -740,8 +738,7 @@ has no public mirror and must be copied manually from Cell Ranger ≥ 8.0.1.
 │   └── perturbation_adata.h5ad     ← expression + assignment
 ├── perturbation_status/            ← present when Mixscape or PS is selected
 └── final/
-    ├── perturbation_adata.h5ad     ← workflow final output
-    └── qc_report.json              ← validation and provenance
+    └── perturbation_adata.h5ad     ← workflow final output
 ```
 
 The workflow also generates intermediate artefacts during reference setup:
