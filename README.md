@@ -12,59 +12,7 @@ for all standard 10x direct-capture chemistries.
 
 ## Workflow Overview
 
-```
-                    sgRNA FASTQ                GEX matrix
-                         │                         │
-                         ▼                         ▼
-                    ┌─────────────────────────────────────┐
-                    │  guide quantification               │
-                    │  simpleaf (piscem + alevin-fry)     │
-                    │  or HAM (hash match + dedup)        │
-                    │  per lane → per-lane MEX            │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │  merge_matrices                     │
-                    │  vertical stack + lane suffix        │
-                    │  automatic barcode translation       │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                              guide_matrix/
-                       (MEX trio, cells × guides)
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │  guide assignment                   │
-                    │  pgmm_em / umi_threshold / fishash  │
-                    │  MEX → unified CSV → perturbation   │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                          perturbation_obs.csv
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │  multimodal integration             │
-                    │  expression + assignment → AnnData  │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │  perturbation-status estimation     │
-                    │  none (skip) / Mixscape / PS        │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                    ┌─────────────────────────────────────┐
-                    │ data validation and standardization │
-                    │  validate + fixed downstream schema │
-                    └────────────────┬────────────────────┘
-                                     │
-                                     ▼
-                         final/perturbation_adata.h5ad
-```
+![scprocess-perturb workflow overview](docs/assets/scprocess-perturb-workflow.svg)
 
 **Guide extraction** produces a per-lane (cells × guides) UMI count matrix in
 standard MEX format under `guide_matrix/`. **Guide assignment** converts that

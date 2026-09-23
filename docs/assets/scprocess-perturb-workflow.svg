@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="800" viewBox="0 0 1680 800">
+<defs>
+  <marker id="arr" markerWidth="6" markerHeight="6" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0L6 3L0 6Z" fill="#53676F"/></marker>
+  <marker id="arr2" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0L8 4L0 8Z" fill="#9AAAB0"/></marker>
+  <style>
+    text{font-family:Inter,"Helvetica Neue",Arial,sans-serif;fill:#26363D}.title{font-size:31px;font-weight:700}.subtitle{font-size:16px;fill:#687980}
+    .cfg-label{font-size:13px;font-weight:700;letter-spacing:1.3px;fill:#74858C}.cfg-item{font-size:15px;font-weight:650}.cfg-note{font-size:12.5px;fill:#75868D}
+    .stage-title{font-size:18px;font-weight:700}.stage-sub{font-size:11.5px;fill:#829198}.num{font-size:14px;font-weight:700;fill:#fff}
+    .node-title{font-size:15px;font-weight:700}.node-sub{font-size:12.5px;fill:#6A7B82}.artifact-sub{font-size:11.5px;fill:#819097}
+    .card{stroke-width:1.3}.node{stroke-width:1.35}.primary{fill:none;stroke:#53676F;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arr)}
+    .inner{fill:none;stroke:#819198;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arr2)}
+  </style>
+</defs>
+<rect width="1680" height="800" fill="#FFFFFF"/>
+<text x="60" y="52" class="title">scprocess-perturb</text>
+<text x="60" y="82" class="subtitle">From Perturb-seq reads to a validated, analysis-ready AnnData dataset</text>
+
+<g transform="translate(0,-60)">
+<g><circle cx="78" cy="240" r="17" fill="#6E7D83"/><text x="78" y="245" text-anchor="middle" class="num">1</text><text x="108" y="246" class="stage-title">Data Inputs</text><text x="60" y="275" class="stage-sub">READS &amp; EXPRESSION</text></g>
+<g><circle cx="313" cy="240" r="17" fill="#547FA9"/><text x="313" y="245" text-anchor="middle" class="num">2</text><text x="343" y="246" class="stage-title">Guide Extraction</text><text x="295" y="275" class="stage-sub">PER-LANE PROCESSING</text></g>
+<g><circle cx="613" cy="240" r="17" fill="#8B70AA"/><text x="613" y="245" text-anchor="middle" class="num">3</text><text x="643" y="246" class="stage-title">Merge &amp; Assignment</text><text x="595" y="275" class="stage-sub">CROSS-LANE RESOLUTION</text></g>
+<g><circle cx="913" cy="240" r="17" fill="#32998C"/><text x="913" y="245" text-anchor="middle" class="num">4</text><text x="943" y="246" class="stage-title">Integration</text><text x="895" y="275" class="stage-sub">MULTIMODAL DATA</text></g>
+<g><circle cx="1168" cy="240" r="17" fill="#65A47F"/><text x="1168" y="245" text-anchor="middle" class="num">5</text><text x="1198" y="246" class="stage-title">Status Estimation</text><text x="1150" y="275" class="stage-sub">BIOLOGICAL ANNOTATION</text></g>
+<g><circle cx="1423" cy="240" r="17" fill="#D9765B"/><text x="1423" y="245" text-anchor="middle" class="num">6</text><text x="1453" y="246" class="stage-title">Finalization</text><text x="1405" y="275" class="stage-sub">VALIDATED OUTPUT</text></g>
+
+<rect x="295" y="315" width="275" height="360" rx="18" class="card" fill="#F2F7FB" stroke="#AFC6DA"/>
+<rect x="595" y="315" width="275" height="360" rx="18" class="card" fill="#F6F2F9" stroke="#C5B5D5"/>
+<rect x="895" y="315" width="230" height="360" rx="18" class="card" fill="#EFF8F6" stroke="#A8D2CB"/>
+<rect x="1150" y="315" width="230" height="360" rx="18" class="card" fill="#F5FAF6" stroke="#B8D5C1"/>
+<rect x="1405" y="315" width="240" height="360" rx="18" class="card" fill="#FDF7F4" stroke="#E8B2A2"/>
+
+<rect x="75" y="370" width="180" height="78" rx="11" class="node" fill="#fff" stroke="#C6D1D5"/>
+<text x="165" y="400" text-anchor="middle" class="node-title">GEX Matrices</text><text x="165" y="426" text-anchor="middle" class="node-sub">.h5 • .h5ad • .h5mu</text>
+<rect x="75" y="521" width="180" height="78" rx="11" class="node" fill="#fff" stroke="#C6D1D5"/>
+<text x="165" y="551" text-anchor="middle" class="node-title">sgRNA FASTQs</text><text x="165" y="577" text-anchor="middle" class="node-sub">R1 + R2 • per lane</text>
+
+<rect x="310" y="360" width="110" height="92" rx="10" class="node" fill="#FAFCFE" stroke="#B8CCDC"/>
+<text x="365" y="393" text-anchor="middle" class="node-title">Guide Library</text><text x="365" y="418" text-anchor="middle" class="node-sub">guides • targets</text><text x="365" y="438" text-anchor="middle" class="node-sub">constructs</text>
+<rect x="435" y="360" width="120" height="92" rx="10" class="node" fill="#FAFCFE" stroke="#B8CCDC"/>
+<text x="495" y="391" text-anchor="middle" class="node-title">Cell-barcode</text><text x="495" y="413" text-anchor="middle" class="node-title">Whitelist</text><text x="495" y="438" text-anchor="middle" class="node-sub">auto-resolved</text>
+<rect x="315" y="500" width="240" height="120" rx="12" class="node" fill="#DCEBF5" stroke="#8EB2CE"/>
+<text x="435" y="534" text-anchor="middle" class="node-title">Guide Extraction</text><text x="435" y="558" text-anchor="middle" class="node-sub">simpleaf | alevin-fry</text><text x="435" y="581" text-anchor="middle" class="node-sub">cell × guide UMI counts</text><text x="435" y="604" text-anchor="middle" class="artifact-sub">Per-lane MEX</text>
+<path d="M365 452V476L405 500" class="inner"/><path d="M495 452V476L465 500" class="inner"/>
+
+<rect x="610" y="345" width="245" height="70" rx="11" class="node" fill="#EEE7F4" stroke="#BFAED0"/>
+<text x="733" y="374" text-anchor="middle" class="node-title">Merge Lanes</text><text x="733" y="399" text-anchor="middle" class="node-sub">Merged MEX</text>
+<path d="M733 415V445" class="inner"/>
+<rect x="610" y="445" width="245" height="70" rx="11" class="node" fill="#EEE7F4" stroke="#BFAED0"/>
+<text x="733" y="474" text-anchor="middle" class="node-title">Guide Assignment</text><text x="733" y="499" text-anchor="middle" class="node-sub">PGMM-EM • threshold • fishash</text>
+<path d="M733 515V545" class="inner"/>
+<rect x="610" y="545" width="245" height="70" rx="11" class="node" fill="#E3D8EC" stroke="#B49CC9"/>
+<text x="733" y="574" text-anchor="middle" class="node-title">Perturbation Call</text><text x="733" y="599" text-anchor="middle" class="node-sub">perturbation_obs.csv</text>
+
+<rect x="910" y="360" width="200" height="100" rx="11" class="node" fill="#E1F2EF" stroke="#88C3B9"/>
+<text x="1010" y="400" text-anchor="middle" class="node-title">Multimodal Integration</text><text x="1010" y="430" text-anchor="middle" class="node-sub">expression + guide assignment</text>
+<path d="M1010 460V510" class="inner"/>
+<rect x="910" y="510" width="200" height="80" rx="11" class="node" fill="#CFE9E4" stroke="#78B9AE"/>
+<text x="1010" y="558" text-anchor="middle" class="node-title">Integrated AnnData</text>
+
+<rect x="1165" y="360" width="200" height="115" rx="11" class="node" fill="#FBFDFB" stroke="#99C5A8"/>
+<text x="1265" y="399" text-anchor="middle" font-size="14" font-weight="700">Perturbation Status</text><text x="1265" y="421" text-anchor="middle" font-size="14" font-weight="700">Estimation</text>
+<text x="1265" y="454" text-anchor="middle" class="node-sub">none (skip) | Mixscape | PS</text>
+<path d="M1265 475V510" class="inner"/>
+<rect x="1165" y="510" width="200" height="80" rx="11" class="node" fill="#E6F2E8" stroke="#91BDA0"/>
+<text x="1265" y="544" text-anchor="middle" class="node-title">Status Annotation</text><text x="1265" y="569" text-anchor="middle" class="node-sub">score • label • reason</text>
+
+<rect x="1420" y="360" width="210" height="100" rx="11" class="node" fill="#FBECE7" stroke="#E1A08D"/>
+<text x="1525" y="416" text-anchor="middle" class="node-title">Validate &amp; Standardize</text>
+<path d="M1525 460V510" class="inner"/>
+<rect x="1420" y="510" width="210" height="80" rx="11" class="node" fill="#F7DED5" stroke="#D98A72"/>
+<text x="1525" y="540" text-anchor="middle" class="artifact-sub">Final Output</text><text x="1525" y="568" text-anchor="middle" font-size="13.5" font-weight="700" fill="#9E4E39">perturbation_adata.h5ad</text>
+
+<path d="M575 495H590" class="primary"/><path d="M875 495H890" class="primary"/><path d="M1130 495H1145" class="primary"/><path d="M1385 495H1400" class="primary"/>
+<path d="M165 370V305H1010V360" class="primary"/>
+<path d="M165 599V650H435V620" class="primary"/>
+</g>
+
+<rect x="60" y="675" width="1560" height="58" rx="15" fill="#F7F9FA" stroke="#D7E0E3"/>
+<text x="88" y="709" class="cfg-label">CONFIGURATION</text>
+<text x="245" y="699" class="cfg-item">Guide Library</text><text x="245" y="720" class="cfg-note">guides • targets • constructs</text>
+<text x="500" y="699" class="cfg-item">10x Chemistry</text><text x="500" y="720" class="cfg-note">geometry • whitelist • translation</text>
+<text x="790" y="699" class="cfg-item">Guide Extraction</text><text x="790" y="720" class="cfg-note">lanes • reads • counting</text>
+<text x="1080" y="699" class="cfg-item">Assignment</text><text x="1080" y="720" class="cfg-note">method • thresholds</text>
+<text x="1325" y="699" class="cfg-item">Status</text><text x="1325" y="720" class="cfg-note">method • covariates</text>
+</svg>
