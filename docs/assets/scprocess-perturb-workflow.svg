@@ -21,7 +21,7 @@
 <g><circle cx="613" cy="240" r="17" fill="#8B70AA"/><text x="613" y="245" text-anchor="middle" class="num">3</text><text x="643" y="246" class="stage-title">Merge &amp; Assignment</text><text x="595" y="275" class="stage-sub">CROSS-LANE RESOLUTION</text></g>
 <g><circle cx="913" cy="240" r="17" fill="#32998C"/><text x="913" y="245" text-anchor="middle" class="num">4</text><text x="943" y="246" class="stage-title">Integration</text><text x="895" y="275" class="stage-sub">MULTIMODAL DATA</text></g>
 <g><circle cx="1168" cy="240" r="17" fill="#65A47F"/><text x="1168" y="245" text-anchor="middle" class="num">5</text><text x="1198" y="246" class="stage-title">Status Estimation</text><text x="1150" y="275" class="stage-sub">BIOLOGICAL ANNOTATION</text></g>
-<g><circle cx="1423" cy="240" r="17" fill="#D9765B"/><text x="1423" y="245" text-anchor="middle" class="num">6</text><text x="1453" y="246" class="stage-title">Finalization</text><text x="1405" y="275" class="stage-sub">VALIDATED OUTPUT</text></g>
+<g><circle cx="1423" cy="240" r="17" fill="#D9765B"/><text x="1423" y="245" text-anchor="middle" class="num">6</text><text x="1453" y="246" class="stage-title">Validate &amp; Standardize</text><text x="1405" y="275" class="stage-sub">VALIDATED OUTPUT</text></g>
 
 <rect x="295" y="315" width="275" height="360" rx="18" class="card" fill="#F2F7FB" stroke="#AFC6DA"/>
 <rect x="595" y="315" width="275" height="360" rx="18" class="card" fill="#F6F2F9" stroke="#C5B5D5"/>
