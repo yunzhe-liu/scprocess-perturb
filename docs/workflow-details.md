@@ -9,7 +9,7 @@ and implementation information that are not required for a first workflow run.
 
 ```yaml
 simpleaf:
-  af_home: /path/to/alevin-fry
+  af_home: ""  # optional override; defaults to the rule Conda environment
   index:
     kmer_length: 15
     minimizer_length: 11

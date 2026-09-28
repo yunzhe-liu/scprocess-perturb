@@ -28,7 +28,7 @@ guide_extraction:
   method: simpleaf                    # simpleaf (default) | hash_matcher
 
 simpleaf:
-  af_home: /path/to/alevin-fry
+  af_home: ""                          # optional override; defaults to rule Conda env
 
 #   Optional overrides (defaults shown):
 #   index:

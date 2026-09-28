@@ -54,7 +54,9 @@ rule build_sgRNA_index:
         os.path.join(config["proj_dir"], "envs", "simpleaf.lock.yaml"),
     shell:"""
         set -euo pipefail
-        export ALEVIN_FRY_HOME="{params.af_home}"
+        AF_HOME="{params.af_home}"
+        export ALEVIN_FRY_HOME="${{AF_HOME:-$CONDA_PREFIX}}"
+        simpleaf set-paths
         mkdir -p "{params.out_dir}"
 
         simpleaf index \

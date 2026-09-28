@@ -95,7 +95,7 @@ guide_extraction:
   method: simpleaf                  # simpleaf | hash_matcher
 
 simpleaf:
-  af_home: /path/to/alevin-fry
+  af_home: ""                       # optional; defaults to the rule Conda environment
 
 assignment:
   guide_design: dual                # single | dual | multi

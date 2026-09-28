@@ -64,7 +64,8 @@ rule simpleaf_quant:
     shell:"""
         set -euo pipefail
         exec &>> {log}
-        export ALEVIN_FRY_HOME="{params.af_home}"
+        AF_HOME="{params.af_home}"
+        export ALEVIN_FRY_HOME="${{AF_HOME:-$CONDA_PREFIX}}"
         simpleaf set-paths
 
         echo "=== simpleaf quant: {wildcards.group} ==="
