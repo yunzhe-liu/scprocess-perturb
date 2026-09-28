@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Feature Reference Adapter: wide-to-long decomposition of dual-sgRNA pair library
-into single-guide indices compatible with simpleaf (guides.fasta + t2g.tsv).
+"""Build simpleaf guide references from the canonical or legacy library schema.
 
 Usage:
     feature_reference_adapter.py --csv <input.csv> \\
@@ -22,6 +21,8 @@ import sys
 
 import pandas as pd
 
+from guide_library import normalize_guide_library, sanitize_guide_id
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -30,7 +31,6 @@ CONST_PATTERN = "(BC)"
 CONST_FEATURE_TYPE = "CRISPR Guide Capture"
 NONTARGETING_LABEL = "Non-Targeting"
 
-SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 NONTARGETING_RE = re.compile(r"non-targeting|ntc|control|intergenic", re.IGNORECASE)
 
 FEATURE_REF_COLS = [
@@ -41,9 +41,9 @@ FEATURE_REF_COLS = [
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Decompose dual-sgRNA library CSV into single-guide FASTA + t2g for simpleaf."
+        description="Build a single-guide FASTA and t2g from a guide library."
     )
-    p.add_argument("--csv", required=True, help="Path to raw_guides_k562_essential.csv")
+    p.add_argument("--csv", required=True, help="Path to guide-library CSV")
     p.add_argument("--out-fasta", required=True, help="Output FASTA file path")
     p.add_argument("--out-t2g", required=True, help="Output 2-column t2g file path")
     p.add_argument("--out-feature-ref", default=None, help="Optional: output Cell Ranger feature_ref.csv")
@@ -54,36 +54,13 @@ def main() -> None:
     args = parse_args()
 
     # ---- 1. Load ----
-    raw = pd.read_csv(args.csv, dtype=str, keep_default_na=False)
-    print(f"Loaded {len(raw)} rows from {args.csv}", file=sys.stderr)
-
-    # ---- 2. Pre-filter duplicates ----
-    dup_col = "duplicated guide pair?"
-    mask_dup = raw[dup_col].str.lower().isin(["true", "yes"])
-    raw = raw[~mask_dup].copy()
-    print(f"  After dedup filter: {len(raw)} rows", file=sys.stderr)
-
-    # ---- 3. Wide-to-long decomposition ----
-    guide_a = raw[["sgID_A", "targeting sequence A", "ensembl gene id", "gene"]].rename(
-        columns={
-            "sgID_A": "id",
-            "targeting sequence A": "sequence",
-            "ensembl gene id": "target_gene_id",
-            "gene": "target_gene_name",
-        }
-    )
-    guide_b = raw[["sgID_B", "targeting sequence B", "ensembl gene id", "gene"]].rename(
-        columns={
-            "sgID_B": "id",
-            "targeting sequence B": "sequence",
-            "ensembl gene id": "target_gene_id",
-            "gene": "target_gene_name",
-        }
-    )
-    long_df = pd.concat([guide_a, guide_b], ignore_index=True).fillna("")
-    long_df = long_df[
-        long_df["id"].str.strip().ne("") & long_df["sequence"].str.strip().ne("")
-    ]
+    library = normalize_guide_library(args.csv, require_sequence=True)
+    print(f"Loaded {len(library)} long-form rows from {args.csv}", file=sys.stderr)
+    long_df = library.rename(columns={
+        "guide_id": "id", "guide_sequence": "sequence",
+        "target_label": "target_gene_name",
+    })
+    long_df["target_gene_id"] = long_df["target_gene_name"]
     print(f"  Long-format: {len(long_df)} single guides", file=sys.stderr)
 
     # ---- 4. Inject constants ----
@@ -93,8 +70,8 @@ def main() -> None:
     long_df["feature_type"] = CONST_FEATURE_TYPE
 
     # ---- 5. Sanitise ----
-    long_df["id"] = long_df["id"].str.replace(SANITIZE_RE, "_", regex=True)
-    long_df["name"] = long_df["name"].str.replace(SANITIZE_RE, "_", regex=True)
+    long_df["id"] = long_df["id"].map(sanitize_guide_id)
+    long_df["name"] = long_df["name"].map(sanitize_guide_id)
 
     # ---- 6. Collapse non-targeting ----
     is_ntc = long_df["target_gene_name"].str.contains(NONTARGETING_RE, na=False, regex=True)

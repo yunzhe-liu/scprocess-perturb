@@ -22,6 +22,7 @@ rule perturbation_status_estimation:
         min_target_cells = int(STATUS_CONFIG.get("min_target_cells", 3)),
         feature_mode = STATUS_CONFIG.get("feature_mode", "auto"),
         seed = int(STATUS_CONFIG.get("seed", 20260902)),
+        keep_work = "--keep-work" if STATUS_CONFIG.get("keep_work", False) else "",
         script = os.path.join(
             config["proj_dir"], "scripts", "run_perturbation_status.py"
         ),
@@ -50,5 +51,6 @@ rule perturbation_status_estimation:
             --min-target-cells "{params.min_target_cells}" \
             --feature-mode "{params.feature_mode}" \
             --seed "{params.seed}" \
+            {params.keep_work} \
             > "{log}" 2>&1
         """

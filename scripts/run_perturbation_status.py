@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+import anndata as ad
 
 
 ELIGIBLE_STRUCTURES = ["single_guide", "concordant_construct"]
@@ -35,12 +36,23 @@ def write_yaml(path: Path, value: dict) -> None:
     path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
 
 
+def boolean_series(values: pd.Series) -> pd.Series:
+    if values.dtype == bool:
+        return values
+    result = values.astype(str).str.lower().map({"true": True, "false": False})
+    if result.isna().any():
+        raise ValueError("is_ntc contains invalid boolean values")
+    return result.astype(bool)
+
+
 def prepare_input(
-    source: Path, work: Path, scripts: Path, dataset: str, feature_mode: str
+    source: Path, work: Path, scripts: Path, dataset: str, feature_mode: str,
+    method: str,
 ) -> tuple[Path, dict]:
     input_dir = work / "input"
     config = {
         "dataset": dataset,
+        "method": method,
         "source_h5ad": str(source.resolve()),
         "input_dir": str(input_dir),
         "row_chunk_size": 512,
@@ -60,6 +72,10 @@ def prepare_input(
 
 
 def run_mixscape(args, input_dir: Path, work: Path, scripts: Path) -> Path:
+    metadata = pd.read_csv(input_dir / "metadata.tsv.gz", sep="\t", index_col=0)
+    target_count = metadata.loc[~boolean_series(metadata["is_ntc"]), "target_label"].nunique()
+    if target_count < 1:
+        raise ValueError("Mixscape requires at least one eligible perturbed target")
     output = work / "method_output"
     config = {
         "module": "perturbation_status",
@@ -84,10 +100,6 @@ def run_mixscape(args, input_dir: Path, work: Path, scripts: Path) -> Path:
     config_path = work / "mixscape.yaml"
     write_yaml(config_path, config)
     run(["Rscript", str(scripts / "run_mixscape.R"), str(config_path)])
-    metadata = pd.read_csv(input_dir / "metadata.tsv.gz", sep="\t", index_col=0)
-    target_count = metadata.loc[~metadata["is_ntc"].astype(bool), "target_label"].nunique()
-    if target_count < 1:
-        raise ValueError("Mixscape requires at least one eligible perturbed target")
     shard_count = min(args.shards, int(target_count))
     shard_root = work / "mixscape_shards"
     shard_config = {
@@ -124,6 +136,11 @@ def run_ps(args, input_dir: Path, work: Path, scripts: Path) -> Path:
     })
     barcode_path = input_dir / "barcode.tsv.gz"
     barcode.to_csv(barcode_path, sep="\t", index=False, compression="gzip")
+    target_counts = barcode.loc[barcode["gene"] != "non-targeting", "gene"].value_counts()
+    modeled_targets = int((target_counts >= args.min_target_cells).sum())
+    shard_count = min(args.shards, modeled_targets)
+    if shard_count < 1:
+        raise ValueError("PS requires at least one target meeting min_target_cells")
     input_rds = work / "ps_input.rds"
     build_config = {
         "input_dir": str(input_dir), "seurat_rds": str(input_rds),
@@ -138,15 +155,15 @@ def run_ps(args, input_dir: Path, work: Path, scripts: Path) -> Path:
     ps_work.mkdir(parents=True, exist_ok=True)
     run([
         sys.executable, str(ps_scripts / "prepare_validation.py"), "--barcode",
-        str(barcode_path), "--output-dir", str(ps_work), "--shards", str(args.shards),
+        str(barcode_path), "--output-dir", str(ps_work), "--shards", str(shard_count),
         "--min-target-cells", str(args.min_target_cells),
     ])
     run([
         "Rscript", str(ps_scripts / "build_input_shards.R"), str(input_rds),
-        str(barcode_path), str(ps_work), str(ps_work / "inputs"), str(args.shards),
+        str(barcode_path), str(ps_work), str(ps_work / "inputs"), str(shard_count),
     ])
     selection_commands = []
-    for shard in range(1, args.shards + 1):
+    for shard in range(1, shard_count + 1):
         name = f"shard_{shard:03d}"
         selection_commands.append([
             "Rscript", str(ps_scripts / "select_response_genes.R"),
@@ -166,7 +183,7 @@ def run_ps(args, input_dir: Path, work: Path, scripts: Path) -> Path:
         str(ps_work / "global_response_genes.txt"), str(ps_work / "global_modeled_genes.txt"),
     ])
     score_commands = []
-    for shard in range(1, args.shards + 1):
+    for shard in range(1, shard_count + 1):
         name = f"shard_{shard:03d}"
         score_commands.append([
             "Rscript", str(ps_scripts / "run_shard.R"),
@@ -181,6 +198,23 @@ def run_ps(args, input_dir: Path, work: Path, scripts: Path) -> Path:
         "--output-dir", str(output), "--excluded-targets", str(ps_work / "shard_manifest.json"),
     ])
     return output / "ps_metadata.tsv"
+
+
+def write_skipped_status(method: str, metadata_path: Path, destination: Path, reason: str) -> dict:
+    metadata = pd.read_csv(metadata_path, sep="\t", index_col=0)
+    result = pd.DataFrame({
+        "cell_id": metadata.index.astype(str),
+        "target_label": metadata["target_label"].astype(str),
+        "is_ntc": boolean_series(metadata["is_ntc"]),
+        "assignment_structure": metadata["assignment_structure"].astype(str),
+        "method": method,
+        "score": pd.NA,
+        "native_status": pd.NA,
+        "scorable": False,
+        "unscorable_reason": reason,
+    })
+    result.to_csv(destination, sep="\t", index=False, compression="gzip")
+    return {"cells": len(result), "unique_cells": int(result.cell_id.nunique())}
 
 
 def standardize(method: str, native_path: Path, metadata_path: Path, destination: Path) -> dict:
@@ -236,6 +270,7 @@ def main() -> None:
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--min-target-cells", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260902)
+    parser.add_argument("--keep-work", action="store_true")
     parser.add_argument(
         "--feature-mode", choices=("auto", "gene", "usa_sa"), default="auto"
     )
@@ -249,13 +284,72 @@ def main() -> None:
     work.mkdir(exist_ok=True)
     scripts = Path(__file__).resolve().parent / "perturbation_status"
     started = time.time()
-    input_dir, adapter_manifest = prepare_input(
-        args.input, work, scripts, args.input.stem, args.feature_mode
-    )
-    native = run_mixscape(args, input_dir, work, scripts) if args.method == "mixscape" else run_ps(args, input_dir, work, scripts)
+    backed = ad.read_h5ad(args.input, backed="r")
+    structures = backed.obs["assignment_structure"].astype(str)
+    eligible_count = int(structures.isin(ELIGIBLE_STRUCTURES).sum())
+    backed.file.close()
     destination = args.output_dir / "perturbation_status.tsv.gz"
-    summary = standardize(args.method, native, input_dir / "metadata.tsv.gz", destination)
-    validation = {"status": "PASS", "method": args.method, **summary}
+    if eligible_count == 0:
+        columns = [
+            "cell_id", "target_label", "is_ntc", "assignment_structure",
+            "method", "score", "native_status", "scorable", "unscorable_reason",
+        ]
+        pd.DataFrame(columns=columns).to_csv(
+            destination, sep="\t", index=False, compression="gzip"
+        )
+        reason = "no_status_eligible_cells"
+        print(
+            f"[skip] method={args.method}; eligible_cells=0; runnable_targets=0; "
+            f"reason={reason}", flush=True,
+        )
+        validation = {
+            "status": "PASS", "method": args.method, "skipped": True,
+            "cells": 0, "unique_cells": 0,
+        }
+        (args.output_dir / "validation.json").write_text(
+            json.dumps(validation, indent=2) + "\n"
+        )
+        manifest = {
+            "status": "PASS", "method": args.method,
+            "input": str(args.input.resolve()),
+            "eligible_assignment_structures": ELIGIBLE_STRUCTURES,
+            "eligible_cells": 0, "perturbed_targets": 0, "runnable_targets": 0,
+            "skipped": True, "skip_reason": reason,
+            "feature_mode_requested": args.feature_mode,
+            "feature_mode_resolved": "not_evaluated", "pse_feature_count": 0,
+            "wall_seconds": time.time() - started,
+        }
+        (args.output_dir / "run_manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+        if not args.keep_work:
+            shutil.rmtree(work)
+        return
+    input_dir, adapter_manifest = prepare_input(
+        args.input, work, scripts, args.input.stem, args.feature_mode, args.method
+    )
+    metadata = pd.read_csv(input_dir / "metadata.tsv.gz", sep="\t", index_col=0)
+    non_ntc = metadata.loc[~boolean_series(metadata["is_ntc"]), "target_label"].value_counts()
+    if args.method == "ps":
+        runnable_targets = int((non_ntc >= args.min_target_cells).sum())
+        skip_reason = "no_target_meets_min_target_cells"
+    else:
+        runnable_targets = int(non_ntc.size)
+        skip_reason = "no_eligible_perturbed_target"
+    skipped = runnable_targets == 0
+    if skipped:
+        print(
+            f"[skip] method={args.method}; eligible_cells={len(metadata)}; "
+            f"perturbed_targets={int(non_ntc.size)}; runnable_targets=0; "
+            f"reason={skip_reason}", flush=True,
+        )
+        summary = write_skipped_status(
+            args.method, input_dir / "metadata.tsv.gz", destination, skip_reason
+        )
+    else:
+        native = run_mixscape(args, input_dir, work, scripts) if args.method == "mixscape" else run_ps(args, input_dir, work, scripts)
+        summary = standardize(args.method, native, input_dir / "metadata.tsv.gz", destination)
+    validation = {"status": "PASS", "method": args.method, "skipped": skipped, **summary}
     (args.output_dir / "validation.json").write_text(json.dumps(validation, indent=2) + "\n")
     manifest = {
         "status": "PASS", "method": args.method, "input": str(args.input.resolve()),
@@ -265,8 +359,15 @@ def main() -> None:
         "feature_mode_requested": args.feature_mode,
         "feature_mode_resolved": adapter_manifest["feature_mode_resolved"],
         "pse_feature_count": adapter_manifest["output_shape"][0],
+        "eligible_cells": int(len(metadata)),
+        "perturbed_targets": int(non_ntc.size),
+        "runnable_targets": runnable_targets,
+        "skipped": skipped,
+        "skip_reason": skip_reason if skipped else None,
     }
     (args.output_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if not args.keep_work:
+        shutil.rmtree(work)
 
 
 if __name__ == "__main__":

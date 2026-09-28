@@ -27,6 +27,7 @@ import gzip
 import os
 import shutil
 import sys
+import tempfile
 
 
 def load_translation(path: str, direction: str = "from_to") -> dict:
@@ -94,15 +95,26 @@ def main():
     print(f"Translated {len(lines):,} barcodes, {untranslated} untranslated",
           file=sys.stderr)
 
-    # Backup original
-    backup = args.input.replace('.gz', '_from_backup.gz')
+    # Keep the backup distinct for both compressed and plain-text inputs.
+    if args.input.endswith('.gz'):
+        backup = args.input[:-3] + '_from_backup.gz'
+    else:
+        backup = args.input + '_from_backup'
     shutil.copy2(args.input, backup)
     print(f"Backup: {backup}", file=sys.stderr)
 
-    # Write translated
-    opener = gzip.open if args.input.endswith('.gz') else open
-    with opener(args.input, 'wt') as f:
-        f.writelines(lines)
+    # Publish atomically so an interrupted write cannot corrupt the whitelist.
+    directory = os.path.dirname(os.path.abspath(args.input))
+    fd, temporary = tempfile.mkstemp(prefix='.translated-', dir=directory)
+    os.close(fd)
+    try:
+        opener = gzip.open if args.input.endswith('.gz') else open
+        with opener(temporary, 'wt') as f:
+            f.writelines(lines)
+        os.replace(temporary, args.input)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
     print(f"Written: {args.input}", file=sys.stderr)
 
 

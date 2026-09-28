@@ -51,7 +51,6 @@ rule simpleaf_quant:
         chemistry  = (config.get("_chemistry") or {}).get("geometry_override") or config["simpleaf"]["quant"]["chemistry"],
         resolution = config["simpleaf"]["quant"]["resolution"],
         af_home    = config["simpleaf"]["af_home"],
-        lock_yaml  = os.path.join(config["proj_dir"], "envs", "simpleaf.lock.yaml"),
         use_knee   = USE_KNEE,
         reads1 = lambda wildcards: _join_fastq(_resolve_reads(wildcards, "r1")),
         reads2 = lambda wildcards: _join_fastq(_resolve_reads(wildcards, "r2")),
@@ -65,16 +64,6 @@ rule simpleaf_quant:
     shell:"""
         set -euo pipefail
         exec &>> {log}
-        CONDA_BASE="$HOME/software/miniconda3"
-        ENV_NAME="simpleaf"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        if [ -d "$CONDA_BASE/envs/$ENV_NAME" ]; then
-            conda activate "$ENV_NAME"
-        else
-            echo "Creating conda environment '$ENV_NAME' from lock file..."
-            conda env create -f "{params.lock_yaml}"
-            conda activate "$ENV_NAME"
-        fi
         export ALEVIN_FRY_HOME="{params.af_home}"
         simpleaf set-paths
 

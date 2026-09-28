@@ -54,7 +54,7 @@ No translation is performed for 5′ single-oligo systems.
 
 Individual fields can be overridden under `chemistry_overrides` without
 defining a fully custom chemistry. Available keys are `af_chemistry`,
-`whitelist`, `expected_ori`, `translation`, `translation_file`,
+`whitelist`, `translation`, `translation_file`,
 `geometry_override`, `ham_chemistry`, and `umi_len`.
 
 ## Custom chemistry
@@ -66,7 +66,6 @@ tenx_chemistry: custom
 custom_chemistry:
   af_chemistry: "1{b[14]u[8]x:}2{r:}"
   whitelist: /path/to/whitelist.txt
-  expected_ori: fw
   translation: false
   ham_chemistry: custom
   umi_len: 8

@@ -73,11 +73,19 @@ assignment:
   guide_design: dual                  # single | dual | multi
   methods:
     - pgmm_em
-  #   Optional overrides (defaults shown):
-  #   umi_threshold: 3
+  # Optional overrides (defaults shown):
+  # pgmm_em:
+  #   umi_threshold: 1
   #   prob_threshold: 0.75
   #   workers: 16
   #   max_em_iter: 200
+  # umi_threshold:
+  #   threshold: 3
+  # fishash:
+  #   padj_cutoff: 0.05
+  #   padj_method: GS
+  #   min_count: 2
+  #   refit: 10
   # - umi_threshold              # simple UMI >= threshold filter (default t=3)
   # - fishash                    # Fisher exact test (needs R + fishash package)
 
@@ -85,6 +93,7 @@ assignment:
 # Produces one canonical perturbation_adata.h5ad artifact.
 integration:
   input_kind: auto                    # auto | counts | standardized
+  cell_id_matching: auto              # auto | exact | barcode_lane | pure_16mer
   counts_layer: counts                # layer used for h5ad/h5mu inputs
   # counts_source: /path/to/aligned_counts.h5ad
   # normalized_source: /path/to/aligned_normalized.h5ad
@@ -97,7 +106,7 @@ integration:
   max_process_memory_gb: 192           # virtual-memory ceiling for integration
 
 # ── Perturbation-status estimation ──
-# Disabled by default because both supported methods are computationally heavy.
+# Select Mixscape or PS explicitly; `none` skips calculation but preserves the interface.
 perturbation_status:
   method: none                         # none | mixscape | ps
   feature_mode: auto                   # auto | gene | usa_sa
@@ -107,6 +116,7 @@ perturbation_status:
   # memory_gb: 64
   # min_target_cells: 3
   # seed: 20260902
+  # keep_work: false                   # retain large method intermediates after success
 
 # ── Data validation and standardization ──
 # Always runs after integration or the selected perturbation-status method.

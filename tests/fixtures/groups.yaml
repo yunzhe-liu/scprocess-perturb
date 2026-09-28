@@ -1,0 +1,7 @@
+groups:
+  lane_01:
+    group_id: lane_01
+    gex_h5: tests/fixtures/expression.h5
+    sgRNA_fastq_dir: tests/fixtures
+    sgRNA_r1_pattern: "dryrun_R1.fastq"
+    sgRNA_r2_pattern: "dryrun_R2.fastq"

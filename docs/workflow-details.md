@@ -68,18 +68,27 @@ also writes per-guide fit diagnostics.
 `umi_threshold` applies a fixed UMI cutoff without fitting a statistical model.
 
 `fishash` applies a one-sided Fisher test with iterative correction and FDR
-control. Every candidate passing the configured filter is retained.
+control. Every candidate passing the configured filter is retained. Its native
+`log_pval` is converted so that the canonical `score` increases with evidence;
+the original value remains in `native_score`.
 
 ### Unified candidate schema
 
 `standardize_assignment.py` converts native method output to:
 
 ```text
-cell_barcode, guide_id, umi_count, rank, score, score_type, method
+cell_barcode, guide_id, umi_count, rank, score, score_type, method,
+native_score, native_score_type
 ```
 
 Ranks are calculated within each cell, but candidates are not truncated at a
 fixed top-K during standardization.
+
+Guide libraries are normalized to the internal long-form columns
+`construct_id, guide_id, guide_sequence, target_label, guide_position`.
+Legacy single/multi long tables and dual-guide wide tables remain accepted.
+Reference generation requires guide sequences; assignment and integration do
+not. This format normalization does not alter construct-resolution rules.
 
 ### Per-cell summary
 
@@ -127,7 +136,16 @@ integration:
 ```
 
 For large sparse matrices, integration switches to bounded-memory streaming and
-performs disk and memory preflight checks before writing.
+performs disk and memory preflight checks before writing. Dense H5AD matrices,
+H5MU RNA matrices, and separate aligned expression sources are included in the
+preflight estimate. Expression cells without assignment are excluded and the
+alignment counts are written to the integration log and manifest.
+
+Cell IDs use one dataset-level strategy: `exact`, `barcode_lane`, or
+`pure_16mer`. The default `auto` mode chooses between them from the available
+ID and metadata representations; it does not mix strategies between cells.
+The pure 16-mer compatibility path keeps the first repeated expression barcode
+in stable input order and reports removed rows in the integration log.
 
 Standalone integration can be invoked with:
 
@@ -161,14 +179,17 @@ The stage writes:
 ```
 
 These files are intermediate inputs and execution records. Standardized status
-fields are merged into the final H5AD by the last stage.
+fields are merged into the final H5AD by the last stage. A selected method with
+no runnable target writes explicit unscorable records and a skip reason instead
+of failing on empty shards. Method work files are removed after success unless
+`perturbation_status.keep_work: true` is configured.
 
 ## Data validation and standardization details
 
 The final stage scans `.X` and `layers["counts"]`, checks required metadata and
-status coverage, writes the fixed status interface, and independently verifies
-that expression and counts were preserved. It does not filter observations or
-variables.
+status coverage, writes the fixed status interface to a temporary H5AD, and
+publishes it only after independent validation. It does not filter observations
+or variables; cells without assignment were already removed during integration.
 
 ```yaml
 finalization:

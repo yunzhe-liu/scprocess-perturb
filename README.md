@@ -153,12 +153,14 @@ per complete workflow run:
 |---|---|---|
 | `pgmm_em` | Per-guide Poisson-Gaussian mixture model | `prob_gaussian` |
 | `umi_threshold` | Fixed UMI threshold | `umi_count` |
-| `fishash` | Fisher-test-based assignment with FDR control | `neg_log_pval` |
+| `fishash` | Fisher-test-based assignment with FDR control | `negative_log_pval` |
 
-All methods produce the same candidate schema:
+All methods produce the same candidate schema. `score` always increases with
+assignment evidence; `native_score` preserves the method's original statistic:
 
 ```text
-cell_barcode, guide_id, umi_count, rank, score, score_type, method
+cell_barcode, guide_id, umi_count, rank, score, score_type, method,
+native_score, native_score_type
 ```
 
 The canonical assignment result is:
@@ -172,13 +174,17 @@ input to multimodal integration. `perturbation_obs.csv` is an additional
 per-cell summary produced according to `guide_design`; it is not the primary
 integration input.
 
-Guide-library schemas depend on the experimental design:
+The canonical guide-library schema is a long table:
 
-| `guide_design` | Required guide-library columns |
-|---|---|
-| `single` | `guide_id, gene` |
-| `dual` | `sgID_A, sgID_B, gene, pair_id` |
-| `multi` | `guide_id, gene, construct_id` |
+```text
+construct_id,guide_id,guide_sequence,target_label,guide_position
+```
+
+`guide_sequence` is required when the workflow builds a guide reference from
+FASTQs. It may be omitted when starting from assignment or integration.
+`construct_id` is required for dual and multi designs; `guide_position` is
+optional. Legacy `guide_id,gene[,construct_id]` tables and dual-guide wide
+tables using `sgID_A/sgID_B` remain accepted and are normalized internally.
 
 Method parameters and intermediate assignment outputs are documented in
 [Workflow details](docs/workflow-details.md#guide-assignment-details).
@@ -204,6 +210,15 @@ is retained for traceability, while guide and construct counts determine
 
 For a `single` guide design, a cell with multiple valid guides is classified as
 `mixed_construct`. Dual and multi designs require a guide-to-construct library.
+Expression cells without a valid assignment are excluded from the integration
+output. Their number, together with assignment rows lacking an expression cell,
+is reported in the integration log and provenance metadata.
+
+Cell-ID matching is selected once per dataset: exact IDs, `barcode_16mer` plus
+lane, or pure 16-mer matching. `integration.cell_id_matching: auto` selects the
+best supported representation. `pure_16mer` is available for merged inputs
+whose lane labels are not comparable; repeated expression barcodes then retain
+the first row in stable input order and the count is reported in the log.
 
 #### Expression contract
 
@@ -220,6 +235,10 @@ Input handling follows these rules:
 - Floating-point `.X` is not automatically treated as raw counts. Use
   `integration.input_kind: counts` only after verifying that it contains counts.
 - A normalized `.X` without an aligned counts layer or counts source is rejected.
+
+The output records whether normalization was computed by the workflow or
+preserved from upstream. Upstream normalization is not relabeled as CP10K unless
+it was computed by this workflow.
 
 The integration H5AD is an intermediate standard input for status estimation
 and the final validation stage; it is not the primary workflow deliverable.
@@ -278,7 +297,7 @@ No separate QC report is produced.
 | `.layers["counts"]` | Aligned original integer counts |
 | `.obs` | Source metadata, assignment annotations, construct/target labels, and status fields |
 | `.var` | Expression-feature metadata |
-| `.obsm["guide_candidates"]` | Sparse matrix of all valid guide candidates and their native scores |
+| `.obsm["guide_candidates"]` | Sparse matrix of all valid guide candidates and canonical scores |
 | `.obsm["construct_candidates"]` | Construct-level candidate scores when a construct library is available |
 | `.uns` | Candidate labels, expression contract, and workflow provenance |
 
@@ -307,6 +326,12 @@ When `method: none`, method is `none`, score and label are missing, scorable is
 `False`, and reason is `not_run`. With Mixscape or PS, every status-eligible cell
 must have exactly one status record. Noneligible cells are retained with reason
 `not_eligible`.
+
+If a selected status method has no runnable perturbed target, the stage completes
+without a model fit, writes unscorable status records with an explicit reason,
+and records the skip in its log and manifest. Large method work directories are
+removed after a successful run; set `perturbation_status.keep_work: true` to
+retain them for debugging.
 
 ## Running selected stages
 

@@ -27,7 +27,6 @@ rule extract_whitelist:
         script    = os.path.join(config["proj_dir"], "scripts", "filter_barcodes.py"),
         min_umi   = config["whitelist"]["min_umi"],
         min_genes = config["whitelist"]["min_genes"],
-        lock_yaml = os.path.join(config["proj_dir"], "envs", "scp_analysis.lock.yaml"),
         # translation controlled by _chemistry spec.
         # True for dual-oligo systems (3' v3, cs1/cs2 bead capture) where
         # GEX barcodes (TruSeq) differ from Feature barcodes (Nextera).
@@ -45,17 +44,6 @@ rule extract_whitelist:
     shell:"""
         set -euo pipefail
         exec &>> {log}
-        CONDA_BASE="$HOME/software/miniconda3"
-        ENV_NAME="scp_analysis"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        if [ -d "$CONDA_BASE/envs/$ENV_NAME" ]; then
-            conda activate "$ENV_NAME"
-        else
-            echo "Creating conda environment '$ENV_NAME' from lock file..."
-            conda env create -f "{params.lock_yaml}"
-            conda activate "$ENV_NAME"
-        fi
-
         mkdir -p "$(dirname "{output.wl_csv}")" "$(dirname "{output.wl_noheader}")"
 
         GEX_FILE="{input.h5}"

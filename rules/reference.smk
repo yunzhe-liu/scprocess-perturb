@@ -18,21 +18,10 @@ rule generate_guide_reference:
         t2g   = config["references"]["guide_t2g_2col"],
     params:
         adapter  = os.path.join(config["proj_dir"], "scripts", "feature_reference_adapter.py"),
-        lock_yaml = os.path.join(config["proj_dir"], "envs", "scp_analysis.lock.yaml"),
     conda:
         os.path.join(config["proj_dir"], "envs", "scp_analysis.lock.yaml"),
     shell:"""
         set -euo pipefail
-        CONDA_BASE="$HOME/software/miniconda3"
-        ENV_NAME="scp_analysis"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        if [ -d "$CONDA_BASE/envs/$ENV_NAME" ]; then
-            conda activate "$ENV_NAME"
-        else
-            echo "Creating conda environment '$ENV_NAME' from lock file..."
-            conda env create -f "{params.lock_yaml}"
-            conda activate "$ENV_NAME"
-        fi
         mkdir -p "$(dirname "{output.fasta}")" "$(dirname "{output.t2g}")"
         # Skip if outputs already exist (adapter is idempotent; avoid redundant runs)
         if [ -f "{output.fasta}" ] && [ -f "{output.t2g}" ]; then
@@ -60,22 +49,11 @@ rule build_sgRNA_index:
         kmer      = config["simpleaf"]["index"]["kmer_length"],
         minimizer = config["simpleaf"]["index"]["minimizer_length"],
         af_home   = config["simpleaf"]["af_home"],
-        lock_yaml = os.path.join(config["proj_dir"], "envs", "simpleaf.lock.yaml"),
     threads: config["resources"]["simpleaf_index_threads"]
     conda:
         os.path.join(config["proj_dir"], "envs", "simpleaf.lock.yaml"),
     shell:"""
         set -euo pipefail
-        CONDA_BASE="$HOME/software/miniconda3"
-        ENV_NAME="simpleaf"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        if [ -d "$CONDA_BASE/envs/$ENV_NAME" ]; then
-            conda activate "$ENV_NAME"
-        else
-            echo "Creating conda environment '$ENV_NAME' from lock file..."
-            conda env create -f "{params.lock_yaml}"
-            conda activate "$ENV_NAME"
-        fi
         export ALEVIN_FRY_HOME="{params.af_home}"
         mkdir -p "{params.out_dir}"
 

@@ -50,19 +50,23 @@ rule finalize_perturbation_adata:
         r"""
         set -euo pipefail
         mkdir -p "$(dirname '{log}')" "$(dirname '{output.adata}')"
+        TEMP_OUTPUT="{output.adata}.partial"
+        trap 'rm -f "$TEMP_OUTPUT"' EXIT
         python3 "{params.finalize_script}" \
             --input "{input.adata}" \
             --status-method "{params.method}" \
             {params.status_arg} \
-            --output "{output.adata}" \
+            --output "$TEMP_OUTPUT" \
             --scan-chunk-values "{params.scan_chunk_values}" \
             --max-input-gb "{params.max_input_gb}" \
             --min-free-disk-gb "{params.min_free_disk_gb}" \
             > "{log}" 2>&1
         python3 "{params.validate_script}" \
             --source "{input.adata}" \
-            --final "{output.adata}" \
+            --final "$TEMP_OUTPUT" \
             --status-method "{params.method}" \
             --chunk-values "{params.scan_chunk_values}" \
             >> "{log}" 2>&1
+        mv "$TEMP_OUTPUT" "{output.adata}"
+        trap - EXIT
         """

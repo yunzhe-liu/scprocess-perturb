@@ -279,4 +279,7 @@ dependencies:
   - zstd=1.5.7
   - pip:
       - brotli==1.2.0
+      - ham==1.0.0
+      - pulp==2.7.0
+      - snakemake==7.32.4
       - zopfli==0.2.3.post1

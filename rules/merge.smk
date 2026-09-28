@@ -28,7 +28,7 @@ rule merge_matrices:
         out_dir     = os.path.join(config["out_dir"], "guide_matrix"),
         prefix      = "merged",
         lane_list   = os.path.join(config["out_dir"], "guide_matrix", ".lane_list.tsv"),
-        groups_repr = "[{items}]".format(items=", ".join(repr(g) for g in GROUPS)),
+        groups_repr = repr(_GROUP_SUFFIXES),
         result_dir  = config["out_dir"],
         quant_subdir = QUANT_OUT_SUBDIR,
         quant_mtx    = QUANT_MTX_FILE,
@@ -42,11 +42,6 @@ rule merge_matrices:
         set -euo pipefail
         exec &>> {log}
 
-        # Activate analysis conda env (provides scipy, numpy for merge script)
-        CONDA_BASE="$HOME/software/miniconda3"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        conda activate scp_analysis
-
         mkdir -p "{params.out_dir}"
 
         # Build lane-list TSV.
@@ -57,10 +52,8 @@ groups = {params.groups_repr}
 result_dir = '{params.result_dir}'
 quant_subdir = '{params.quant_subdir}'
 with open('{params.lane_list}', 'w') as f:
-    for g in groups:
+    for g, suffix in groups.items():
         quant_dir = os.path.join(result_dir, 'lanes', g, quant_subdir)
-        m = re.search(r'(\d+)$', g)
-        suffix = f'-L{{m.group(1)}}' if m else f'-{{g}}'
         f.write(g + chr(9) + quant_dir + chr(9) + suffix + chr(10))
 print('Lane list written: ' + str(len(groups)) + ' lanes')
 "

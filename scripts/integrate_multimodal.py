@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fuse per-lane expression matrices with guide assignments.
 
-The integration step is the terminal export for scprocess-perturb.  It reads:
+The integration step prepares the standardized input for downstream stages. It reads:
 
   * one expression matrix per group (``group=path``),
   * optionally, the merged guide barcode list, and
@@ -14,9 +14,9 @@ Cell identity follows the same convention as ``rules/merge.smk``.  When the
 expression ``obs`` contains ``lane`` and ``barcode_16mer``, the key is
 ``{16mer}-L{lane:02d}``; otherwise a normalized 16-base barcode receives the
 group suffix (``-L01`` for a group ending in ``01``).  Already-merged
-lane-prefixed IDs such as ``l1_AAAC...`` are reduced to the 16mer and repeated
-keys are retained once in deterministic file order.  The GEX cells form the
-output cell universe; assignment rows are left-joined onto that universe.  If
+lane-prefixed IDs such as ``l1_AAAC...`` are reduced to the 16mer. Repeated
+keys are rejected unless explicit lane metadata disambiguates them. Only GEX
+cells with a valid assignment form the output cell universe. If
 an already-merged input has IDs in the form ``{16mer}-{number}``, that suffix
 is retained for batch-aware alignment.
 
@@ -62,17 +62,19 @@ import scipy.sparse as sp
 import anndata as ad
 from anndata import AnnData
 
+from guide_library import guide_id_aliases, normalize_guide_library
+
 
 _BARCODE_RE = re.compile(r"([ACGTN]{16})", re.IGNORECASE)
 _LANE_PREFIXED_BARCODE_RE = re.compile(r"^l\d+_[ACGTN]{16}$", re.IGNORECASE)
 _SUFFIXED_BARCODE_RE = re.compile(r"^[ACGTN]{16}-(\d+)$", re.IGNORECASE)
 _CELL_SUFFIX_RE = re.compile(r"-L?0*(\d+)$", re.IGNORECASE)
-_GUIDE_ID_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 _NONTARGETING_RE = re.compile(
     r"non[-_ ]?target(?:ing)?|negctrl|ntc|ntg\d+|control|intergenic",
     re.IGNORECASE,
 )
 GUIDE_DESIGN_CHOICES = ("single", "dual", "multi")
+CELL_ID_MATCHING_CHOICES = ("auto", "exact", "barcode_lane", "pure_16mer")
 ASSIGNMENT_STRUCTURE_CHOICES = (
     "single_guide",
     "concordant_construct",
@@ -188,21 +190,54 @@ class _H5MatrixReader:
         self.handle.close()
 
 
+class _RowSubsetReader:
+    """Expose selected source rows through contiguous output row slices."""
+
+    def __init__(self, matrix, rows: np.ndarray):
+        self.matrix = matrix
+        self.rows = np.asarray(rows, dtype=np.int64)
+        self.shape = (len(self.rows), int(matrix.shape[1]))
+        self.dtype = matrix.dtype
+
+    def __getitem__(self, item):
+        if not isinstance(item, slice) or item.step not in (None, 1):
+            raise TypeError("row-subset reader supports contiguous output slices only")
+        start, stop, _ = item.indices(self.shape[0])
+        selected = self.rows[start:stop]
+        if selected.size == 0:
+            return sp.csr_matrix((0, self.shape[1]), dtype=self.dtype)
+        boundaries = np.flatnonzero(np.diff(selected) != 1) + 1
+        runs = np.split(selected, boundaries)
+        blocks = []
+        for run in runs:
+            block = self.matrix[int(run[0]):int(run[-1]) + 1]
+            blocks.append(block if sp.issparse(block) else sp.csr_matrix(block))
+        return blocks[0].tocsr() if len(blocks) == 1 else sp.vstack(blocks, format="csr")
+
+
 def _h5ad_has_node(path: Path, node_path: str) -> bool:
     with h5py.File(path, "r") as handle:
         return node_path in handle
 
 
-def _h5ad_sparse_stats(path: Path, node_path: str = "/X") -> tuple[int, int, int] | None:
-    """Return rows, cols, nnz for a sparse h5ad node without reading data."""
+def _h5_matrix_stats(path: Path, node_path: str = "/X") -> tuple[int, int, int] | None:
+    """Return rows, columns, and stored-value upper bound without loading a matrix."""
     with h5py.File(path, "r") as handle:
         if node_path not in handle:
             return None
         node = handle[node_path]
-        if not isinstance(node, h5py.Group) or "data" not in node:
-            return None
-        shape = tuple(int(x) for x in node.attrs["shape"])
-        return shape[0], shape[1], int(node["data"].shape[0])
+        if isinstance(node, h5py.Group) and "data" in node:
+            if "shape" in node.attrs:
+                shape = tuple(int(x) for x in node.attrs["shape"])
+            elif "shape" in node:
+                raw_shape = tuple(int(x) for x in node["shape"][:])
+                shape = (raw_shape[1], raw_shape[0]) if node_path == "/matrix" else raw_shape
+            else:
+                return None
+            return shape[0], shape[1], int(node["data"].shape[0])
+        if isinstance(node, h5py.Dataset) and node.ndim == 2:
+            return int(node.shape[0]), int(node.shape[1]), int(np.prod(node.shape))
+        return None
 
 
 def _apply_memory_limit(max_memory_gb: float) -> None:
@@ -224,17 +259,30 @@ def preflight_resources(
     max_output_gb: float,
     min_free_disk_gb: float,
     max_process_memory_gb: float,
+    counts_source: Path | None = None,
+    normalized_source: Path | None = None,
 ) -> dict:
     """Fail before integration if a large run exceeds explicit safeguards."""
     input_nnz = 0
     estimated_output = 0
     stats = []
     for _, path in groups:
-        result = _h5ad_sparse_stats(path)
+        x_path = normalized_source or path
+        counts_path = counts_source or path
+        x_node = "/mod/rna/X" if x_path.suffix.lower() == ".h5mu" else "/X"
+        counts_node = (
+            f"/mod/rna/layers/{counts_layer}"
+            if counts_path.suffix.lower() == ".h5mu"
+            else f"/layers/{counts_layer}"
+        )
+        result = _h5_matrix_stats(x_path, x_node)
+        if result is None and path.suffix.lower() == ".h5":
+            raw = _h5_matrix_stats(path, "/matrix")
+            result = raw
         if result is None:
             continue
         n_rows, n_cols, x_nnz = result
-        count_result = _h5ad_sparse_stats(path, f"/layers/{counts_layer}")
+        count_result = _h5_matrix_stats(counts_path, counts_node)
         count_nnz = count_result[2] if count_result is not None else x_nnz
         input_nnz += count_nnz
         if input_kind == "counts" and count_result is None:
@@ -482,6 +530,25 @@ def _matrix_nnz(matrix) -> int:
     return -1
 
 
+def _subset_expression(expression: ExpressionData, rows: np.ndarray) -> ExpressionData:
+    def subset(matrix):
+        if matrix is None:
+            return None
+        if sp.issparse(matrix) or isinstance(matrix, np.ndarray):
+            return matrix[rows]
+        return _RowSubsetReader(matrix, rows)
+
+    return ExpressionData(
+        X=subset(expression.X),
+        counts=subset(expression.counts),
+        obs=expression.obs.iloc[rows].copy(),
+        var=expression.var,
+        backing=expression.backing,
+        counts_origin=expression.counts_origin,
+        normalized_origin=expression.normalized_origin,
+    )
+
+
 def _materialize_csr(matrix) -> sp.csr_matrix:
     if sp.issparse(matrix):
         return matrix.tocsr()
@@ -503,8 +570,19 @@ def _normalize_counts(matrix, target_sum: float) -> sp.csr_matrix:
     return counts
 
 
-def _expression_cell_keys(obs: pd.DataFrame, group: str) -> list[str]:
-    """Build keys from explicit lane metadata or the configured group suffix."""
+def _expression_cell_keys(
+    obs: pd.DataFrame,
+    group: str,
+    matching: str,
+    assignment_keys: set[str],
+) -> tuple[list[str], str]:
+    """Build one dataset-level cell-key representation."""
+    original_ids = obs.index.astype(str).to_numpy()
+    if matching == "exact":
+        return original_ids.tolist(), "exact"
+    if matching == "pure_16mer":
+        return [_normalize_barcode(cell) for cell in original_ids], "pure_16mer"
+
     if {"lane", "barcode_16mer"}.issubset(obs.columns):
         lane_values = pd.to_numeric(obs["lane"], errors="raise").to_numpy(
             dtype=float
@@ -520,17 +598,33 @@ def _expression_cell_keys(obs: pd.DataFrame, group: str) -> list[str]:
         return [
             f"{_normalize_barcode(barcode)}-L{lane:02d}"
             for barcode, lane in zip(barcodes, lanes)
-        ]
+        ], "barcode_lane"
 
-    original_ids = obs.index.astype(str).to_numpy()
     if original_ids.size and all(
         _LANE_PREFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
     ):
-        # Some already-merged h5ad files encode lane in the cell ID (for
-        # example, Papalexi: l1_AAAC...).  The assignment table uses the
-        # canonical 16mer-L## form, so retain the barcode and let the loader
-        # deterministically collapse repeated 16mers across lanes below.
-        return [_normalize_barcode(cell) for cell in original_ids]
+        lane_keys = []
+        for cell in original_ids:
+            lane = int(re.match(r"^l0*(\d+)_", cell, re.IGNORECASE).group(1))
+            lane_keys.append(f"{_normalize_barcode(cell)}-L{lane:02d}")
+        if matching == "barcode_lane":
+            return lane_keys, "barcode_lane"
+
+        # Auto mode compares complete strategies for the whole dataset.  A
+        # synthetic one-group assignment suffix (Papalexi-style) must not be
+        # mixed with true lane-aware matches on a cell-by-cell basis.
+        exact_overlap = len(set(original_ids) & assignment_keys)
+        lane_overlap = len(set(lane_keys) & assignment_keys)
+        pure_assignment = {_normalize_barcode(cell) for cell in assignment_keys}
+        pure_overlap = len(
+            set(_normalize_barcode(cell) for cell in original_ids) & pure_assignment
+        )
+        if exact_overlap >= max(lane_overlap, pure_overlap):
+            return original_ids.tolist(), "exact"
+        if lane_overlap >= pure_overlap:
+            return lane_keys, "barcode_lane"
+        return [_normalize_barcode(cell) for cell in original_ids], "pure_16mer"
+
     if original_ids.size and all(
         _SUFFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
     ):
@@ -541,9 +635,9 @@ def _expression_cell_keys(obs: pd.DataFrame, group: str) -> list[str]:
             f"{_normalize_barcode(cell)}-"
             f"{_SUFFIXED_BARCODE_RE.fullmatch(cell).group(1)}"
             for cell in original_ids
-        ]
+        ], "exact"
     suffix = _group_suffix(group)
-    return [f"{_normalize_barcode(cell)}{suffix}" for cell in original_ids]
+    return [f"{_normalize_barcode(cell)}{suffix}" for cell in original_ids], "barcode_lane"
 
 
 def _parse_pairs(items: list[str], label: str) -> list[tuple[str, Path]]:
@@ -579,7 +673,9 @@ def load_expression(
     target_sum: float,
     counts_source: Path | None = None,
     normalized_source: Path | None = None,
-) -> tuple[ExpressionData, list[str]]:
+    cell_id_matching: str = "auto",
+    assignment_keys: set[str] | None = None,
+) -> tuple[ExpressionData, list[str], str, int]:
     if not groups:
         raise ValueError("at least one --gex group=path is required")
     if (counts_source is not None or normalized_source is not None) and len(groups) != 1:
@@ -590,10 +686,11 @@ def load_expression(
     counts_origins = []
     normalized_origins = []
     observations = []
-    lane_prefixed_input = True
     first_var = None
     first_var_names = None
     backings = []
+    selected_strategies = []
+    assignment_keys = assignment_keys or set()
     for group, path in groups:
         data = _read_expression(
             path,
@@ -618,10 +715,10 @@ def load_expression(
             )
 
         original_ids = data.obs.index.astype(str).to_numpy()
-        lane_prefixed_input = lane_prefixed_input and bool(original_ids.size) and all(
-            _LANE_PREFIXED_BARCODE_RE.fullmatch(cell_id) for cell_id in original_ids
+        cell_keys, selected_strategy = _expression_cell_keys(
+            data.obs, group, cell_id_matching, assignment_keys
         )
-        cell_keys = _expression_cell_keys(data.obs, group)
+        selected_strategies.append(selected_strategy)
         obs = data.obs.copy()
         obs["cell_key"] = cell_keys
         obs["source_group"] = group
@@ -656,19 +753,29 @@ def load_expression(
         counts = sp.vstack(
             [_materialize_csr(count) for count in count_matrices], format="csr"
         )
+    if len(set(selected_strategies)) != 1:
+        raise ValueError(
+            "expression groups selected inconsistent cell-ID matching strategies"
+        )
+    selected_strategy = selected_strategies[0]
+    duplicate_rows_removed = 0
     if not obs.index.is_unique:
-        # Lane-prefixed merged h5ad inputs can contain the same 16mer in more
-        # than one lane.  Keep the first row in file order, which is stable
-        # and preserves the same cell universe used by the assignment table.
-        if not lane_prefixed_input:
-            raise ValueError("expression inputs produce duplicate integration cell keys")
+        if selected_strategy != "pure_16mer":
+            raise ValueError(
+                "expression inputs produce duplicate integration cell keys; provide "
+                "explicit lane/barcode_16mer metadata or select pure_16mer explicitly"
+            )
         keep = ~obs.index.duplicated(keep="first")
+        duplicate_rows_removed = int((~keep).sum())
         obs = obs.iloc[np.flatnonzero(keep)].copy()
         if X is not None:
             X = X[keep]
         counts = counts[keep]
-    if not obs.index.is_unique:
-        raise ValueError("expression inputs produce duplicate integration cell keys")
+        print(
+            f"[cell matching] pure_16mer removed "
+            f"{duplicate_rows_removed:,} duplicate expression rows (kept first)",
+            flush=True,
+        )
     if X is None:
         # This is only possible for a backed counts-only h5ad.  It is handled
         # by the streaming writer; keeping the source lazy is intentional.
@@ -690,7 +797,7 @@ def load_expression(
         backing=backings,
         counts_origin=counts_origin,
         normalized_origin=normalized_origin,
-    ), list(obs.index)
+    ), list(obs.index), selected_strategy, duplicate_rows_removed
 
 
 def _pick_raw_score_column(columns) -> str:
@@ -700,17 +807,6 @@ def _pick_raw_score_column(columns) -> str:
     raise ValueError(
         f"assignment CSV has no supported score column; found {list(columns)}"
     )
-
-
-def _sanitize_guide_id(value: str) -> str:
-    """Match guide ID sanitization used by feature_reference_adapter.py."""
-    return _GUIDE_ID_SANITIZE_RE.sub("_", str(value).strip())
-
-
-def _guide_aliases(value: str) -> list[str]:
-    """Cover raw, comma-flattened, and feature-reference sanitized IDs."""
-    raw = str(value).strip()
-    return list(dict.fromkeys((raw, raw.replace(",", "_"), _sanitize_guide_id(raw))))
 
 
 def load_guide_construct_map(path: Path) -> dict[str, str]:
@@ -739,12 +835,9 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
         raw_frame.columns = ["guide_id", "construct_id"]
         frame = raw_frame
         columns = set(frame.columns)
-    duplicate_column = "duplicated guide pair?"
-    if duplicate_column in columns:
-        duplicate = frame[duplicate_column].str.strip().str.lower().isin(
-            {"true", "yes", "1"}
-        )
-        frame = frame.loc[~duplicate].copy()
+    else:
+        frame = normalize_guide_library(path, require_sequence=False)
+        columns = set(frame.columns)
     mapping = {}
 
     def add_mapping(guide: str, construct: str) -> None:
@@ -777,7 +870,7 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
                 continue
             for column in ("sgID_A", "sgID_B"):
                 raw_guide = str(row[column]).strip()
-                for guide in _guide_aliases(raw_guide):
+                for guide in guide_id_aliases(raw_guide):
                     if guide:
                         add_mapping(guide, construct)
         return mapping
@@ -803,7 +896,7 @@ def load_guide_construct_map(path: Path) -> dict[str, str]:
         raw_guide = str(row[guide_column]).strip()
         construct = str(row[construct_column]).strip()
         if raw_guide and construct:
-            for guide in _guide_aliases(raw_guide):
+            for guide in guide_id_aliases(raw_guide):
                 if guide:
                     add_mapping(guide, construct)
     return mapping
@@ -827,11 +920,7 @@ def load_guide_target_map(path: Path) -> dict[str, str]:
     """Load optional guide→target metadata without requiring a new schema."""
     frame = pd.read_csv(path, dtype=str, keep_default_na=False)
     columns = set(frame.columns)
-    if {"sgID_A", "sgID_B"}.issubset(columns):
-        guide_columns = ["sgID_A", "sgID_B"]
-    elif "guide_id" in columns or "gRNA" in columns:
-        guide_columns = ["guide_id" if "guide_id" in columns else "gRNA"]
-    else:
+    if not ({"sgID_A", "sgID_B"}.issubset(columns) or "guide_id" in columns or "gRNA" in columns):
         raw_frame = pd.read_csv(
             path, sep=None, engine="python", header=None, dtype=str,
             keep_default_na=False,
@@ -840,6 +929,10 @@ def load_guide_target_map(path: Path) -> dict[str, str]:
             return {}
         raw_frame.columns = ["guide_id", "construct_id"]
         frame = raw_frame
+        columns = set(frame.columns)
+        guide_columns = ["guide_id"]
+    else:
+        frame = normalize_guide_library(path, require_sequence=False)
         columns = set(frame.columns)
         guide_columns = ["guide_id"]
 
@@ -860,7 +953,7 @@ def load_guide_target_map(path: Path) -> dict[str, str]:
         if not guide:
             return
         target = target or _infer_target_label(guide)
-        for alias in _guide_aliases(guide):
+        for alias in guide_id_aliases(guide):
             previous = target_map.get(alias)
             if previous is not None and previous != target:
                 raise ValueError(
@@ -945,6 +1038,13 @@ def _read_merged_barcodes(path: Path) -> set[str]:
         return {line.strip() for line in handle if line.strip()}
 
 
+def _keys_for_matching(keys: set[str], strategy: str) -> set[str]:
+    """Represent diagnostic barcode sets with the selected matching strategy."""
+    if strategy == "pure_16mer":
+        return {_normalize_barcode(key) for key in keys}
+    return keys
+
+
 def _candidate_matrix(assign: AssignmentData, cell_keys: list[str]) -> sp.csr_matrix:
     cell_pos = {key: i for i, key in enumerate(cell_keys)}
     guide_pos = {guide: i for i, guide in enumerate(assign.guides)}
@@ -961,9 +1061,12 @@ def _candidate_matrix(assign: AssignmentData, cell_keys: list[str]) -> sp.csr_ma
 
 
 def _align_assignment_cells(
-    assignment: AssignmentData, cell_keys: list[str]
+    assignment: AssignmentData, cell_keys: list[str], matching_strategy: str
 ) -> AssignmentData:
     """Resolve assignment cell aliases against the GEX cell universe."""
+    if matching_strategy == "exact":
+        return assignment
+
     gex_keys = set(cell_keys)
     by_barcode: dict[str, list[str]] = {}
     for key in cell_keys:
@@ -971,6 +1074,8 @@ def _align_assignment_cells(
         by_barcode.setdefault(barcode, []).append(key)
 
     def resolve(raw_key: str) -> str:
+        if matching_strategy == "pure_16mer":
+            return _normalize_barcode(raw_key)
         if raw_key in gex_keys:
             return raw_key
         barcode = _normalize_barcode(raw_key)
@@ -1234,23 +1339,39 @@ def integrate(
     max_materialized_nnz: int = 100_000_000,
     counts_source: Path | None = None,
     normalized_source: Path | None = None,
+    cell_id_matching: str = "auto",
 ) -> AnnData:
     if guide_design not in GUIDE_DESIGN_CHOICES:
         raise ValueError(
             f"unknown guide design {guide_design!r}; "
             f"choose from {GUIDE_DESIGN_CHOICES}"
         )
-    expression, cell_keys = load_expression(
+    if cell_id_matching not in CELL_ID_MATCHING_CHOICES:
+        raise ValueError(
+            f"unknown cell-ID matching mode {cell_id_matching!r}; "
+            f"choose from {CELL_ID_MATCHING_CHOICES}"
+        )
+    raw_assignment = load_assignment(assignment)
+    raw_assignment_keys = set(raw_assignment.candidates["cell_key"])
+    expression, cell_keys, matching_strategy, duplicate_rows_removed = load_expression(
         groups, input_kind=input_kind, counts_layer=counts_layer,
         target_sum=target_sum,
         counts_source=counts_source,
         normalized_source=normalized_source,
+        cell_id_matching=cell_id_matching,
+        assignment_keys=raw_assignment_keys,
+    )
+    print(
+        f"[cell matching] requested={cell_id_matching}; "
+        f"selected={matching_strategy}",
+        flush=True,
     )
     merged_keys = (
         _read_merged_barcodes(merged_barcodes)
         if merged_barcodes is not None
         else set()
     )
+    comparable_merged_keys = _keys_for_matching(merged_keys, matching_strategy)
     gex_keys = set(cell_keys)
     print(
         f"[gex] {expression.obs.shape[0]:,} cells x {expression.var.shape[0]:,} genes"
@@ -1258,17 +1379,36 @@ def integrate(
     if merged_barcodes is not None:
         print(
             f"[merge] {len(merged_keys):,} guide-matrix cells; "
-            f"{len(merged_keys & gex_keys):,} overlap GEX"
+            f"{len(comparable_merged_keys & gex_keys):,} overlap GEX"
         )
     else:
         print("[merge] merged guide barcode list not supplied; overlap not computed")
 
-    loaded = _align_assignment_cells(load_assignment(assignment), cell_keys)
+    loaded = _align_assignment_cells(raw_assignment, cell_keys, matching_strategy)
+    assignment_keys = set(loaded.candidates["cell_key"])
+    gex_key_set = set(cell_keys)
+    keep = np.asarray([key in assignment_keys for key in cell_keys], dtype=bool)
+    unmatched_gex = int((~keep).sum())
+    unmatched_assignment = len(assignment_keys.difference(gex_key_set))
+    print(
+        f"[alignment] matched={int(keep.sum()):,}; "
+        f"excluded_unassigned_gex={unmatched_gex:,}; "
+        f"assignment_without_gex={unmatched_assignment:,}",
+        flush=True,
+    )
+    if not keep.any():
+        raise ValueError("no expression cells match the assignment result")
+    if unmatched_gex:
+        rows = np.flatnonzero(keep)
+        expression = _subset_expression(expression, rows)
+        cell_keys = [cell_keys[index] for index in rows]
     guide_construct = None
     if guide_csv is not None:
         guide_construct = load_guide_construct_map(guide_csv)
-        if not guide_construct:
+        if not guide_construct and guide_design in {"dual", "multi"}:
             raise ValueError(f"{guide_csv}: no guide-to-construct mappings found")
+        if not guide_construct:
+            guide_construct = None
     elif guide_design in {"dual", "multi"}:
         raise ValueError(
             f"guide_design={guide_design!r} requires --guide-csv for construct mapping"
@@ -1290,7 +1430,12 @@ def integrate(
     # Keep the pre-canonical names for the downstream standardization adapter.
     obs["assigned_guide"] = top_guide.copy()
 
-    adata = AnnData(X=expression.X, obs=obs, var=expression.var)
+    metadata_x = (
+        sp.csr_matrix((len(cell_keys), expression.var.shape[0]), dtype=np.float32)
+        if isinstance(expression.X, _RowSubsetReader)
+        else expression.X
+    )
+    adata = AnnData(X=metadata_x, obs=obs, var=expression.var)
     # Keep backed source handles alive until the caller has written the output.
     # This attribute is private and is not serialized into the h5ad artifact.
     adata._scprocess_expression_backing = expression.backing
@@ -1355,14 +1500,21 @@ def integrate(
     adata.uns["config"] = json.loads(json.dumps(config_snapshot, default=str))
     adata.uns["integration"] = {
         "guide_design": guide_design,
-        "cell_universe": "gex",
+        "cell_universe": "assigned_gex_cells",
         "cell_key_rule": (
-            "auto: explicit lane + barcode_16mer; lane-prefixed IDs; existing "
-            "numeric suffix; otherwise normalized_16mer + merge group suffix"
+            "dataset-level exact, barcode_lane, or pure_16mer matching"
         ),
+        "cell_id_matching_requested": cell_id_matching,
+        "cell_id_matching_selected": matching_strategy,
+        "duplicate_expression_rows_removed": duplicate_rows_removed,
         "construct_aggregation": construct_aggregation,
         "assignment_structure": list(ASSIGNMENT_STRUCTURE_CHOICES),
         "assignment": assignment_summary,
+        "alignment": {
+            "matched_cells": int(len(cell_keys)),
+            "excluded_unassigned_gex_cells": unmatched_gex,
+            "assignment_cells_without_gex": unmatched_assignment,
+        },
         "config": json.loads(json.dumps(config_snapshot, default=str)),
     }
     adata.uns["manifest"] = {
@@ -1372,6 +1524,11 @@ def integrate(
         "n_genes": int(adata.n_vars),
         "assignment_rows": int(len(loaded.candidates)),
         "assignment_cells": int(loaded.candidates["cell_key"].nunique()),
+        "excluded_unassigned_gex_cells": unmatched_gex,
+        "assignment_cells_without_gex": unmatched_assignment,
+        "cell_id_matching_requested": cell_id_matching,
+        "cell_id_matching_selected": matching_strategy,
+        "duplicate_expression_rows_removed": duplicate_rows_removed,
         "obsm_candidate_keys": candidate_keys,
         "assignment_structure_counts": {
             str(key): int(value)
@@ -1391,31 +1548,57 @@ def integrate(
         ),
         "merged_barcode_count": len(merged_keys) if merged_barcodes is not None else None,
         "merged_barcode_overlap": (
-            len(merged_keys & gex_keys) if merged_barcodes is not None else None
+            len(comparable_merged_keys & gex_keys)
+            if merged_barcodes is not None else None
         ),
     }
+    computed_normalization = expression.normalized_origin.startswith("computed")
     adata.uns["standardization"] = {
         "adapter": "scprocess-perturb multimodal integration",
         "adapter_contract": "M01",
         "counts_origin": expression.counts_origin,
         "normalized_origin": expression.normalized_origin,
+        "normalization_source": (
+            "workflow_computed" if computed_normalization else "upstream_preserved"
+        ),
+        "normalization_method": (
+            "log1p_cp10k" if computed_normalization else "upstream_unspecified"
+        ),
         "target_sum": float(target_sum),
         "source_shape": [int(expression.obs.shape[0]), int(expression.var.shape[0])],
         "output_contract": {
-            "X": "log1p(CP10K)",
-            "layers/counts": "original integer-valued counts",
+            "X": (
+                "log1p(CP10K) computed by workflow"
+                if computed_normalization else "normalized expression preserved from upstream"
+            ),
+            "counts_layer": "original integer-valued counts",
         },
     }
     adata._scprocess_expression_data = expression
     return adata
 
 
+def _h5ad_safe_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Make string columns writable by both current and anndata 0.10."""
+    frame = frame.copy()
+    for column in frame.columns:
+        if isinstance(frame[column].dtype, pd.StringDtype):
+            # anndata 0.10 cannot serialize categorical levels backed by the
+            # pandas StringArray introduced by newer pandas releases.
+            frame[column] = frame[column].astype(object).astype("category")
+        elif pd.api.types.is_object_dtype(frame[column].dtype):
+            nonmissing = frame[column].dropna()
+            if nonmissing.empty or nonmissing.map(lambda value: isinstance(value, str)).all():
+                frame[column] = frame[column].astype("category")
+    return frame
+
+
 def _metadata_only(adata: AnnData) -> AnnData:
     """Create a small AnnData shell used by the streaming H5AD writer."""
     shell = AnnData(
         X=sp.csr_matrix(adata.shape, dtype=np.float32),
-        obs=adata.obs.copy(),
-        var=adata.var.copy(),
+        obs=_h5ad_safe_frame(adata.obs),
+        var=_h5ad_safe_frame(adata.var),
     )
     for key in adata.obsm.keys():
         shell.obsm[key] = adata.obsm[key]
@@ -1568,6 +1751,8 @@ def write_standardized_output(
         raise ValueError("normalized expression and counts shapes differ")
     adata.X = normalized
     adata.layers["counts"] = counts
+    adata.obs = _h5ad_safe_frame(adata.obs)
+    adata.var = _h5ad_safe_frame(adata.var)
     output.parent.mkdir(parents=True, exist_ok=True)
     adata.write_h5ad(output)
     return "materialized"
@@ -1596,6 +1781,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input-kind", choices=("auto", "counts", "standardized"), default="auto",
         help="expression input; auto detects raw integer X or layers[counts]",
+    )
+    parser.add_argument(
+        "--cell-id-matching", choices=CELL_ID_MATCHING_CHOICES, default="auto",
+        help="dataset-level expression/assignment cell-ID matching strategy",
     )
     parser.add_argument(
         "--counts-layer", default="counts",
@@ -1673,6 +1862,8 @@ def main(argv=None) -> int:
         max_output_gb=args.max_output_gb,
         min_free_disk_gb=args.min_free_disk_gb,
         max_process_memory_gb=args.max_process_memory_gb,
+        counts_source=counts_source,
+        normalized_source=normalized_source,
     )
     adata = integrate(
         groups=groups,
@@ -1687,6 +1878,7 @@ def main(argv=None) -> int:
         max_materialized_nnz=args.max_materialized_nnz,
         counts_source=counts_source,
         normalized_source=normalized_source,
+        cell_id_matching=args.cell_id_matching,
     )
     backend = write_standardized_output(
         adata=adata,

@@ -15,6 +15,7 @@
 import os
 import sys
 import glob as _pyglob
+import re
 import yaml
 
 
@@ -49,10 +50,40 @@ def _resolve_sgRNA_fastq(group_cfg: dict, read: str) -> list:
     return files
 
 
+def _fastq_pair_key(path: str) -> str:
+    """Normalize common R1/R2 tokens while preserving sample/lane identity."""
+    name = os.path.basename(path)
+    name = re.sub(r"(?i)(^|[._-])R[12](?=([._-]|$))", r"\1READ", name)
+    name = re.sub(r"(?i)(^|[._-])[12](?=([._-](?:f(?:ast)?q)(?:\.gz)?$))", r"\1READ", name)
+    return name
+
+
+def _validate_fastq_pairs(group: str, r1: list, r2: list) -> None:
+    if not r1 or not r2:
+        raise ValueError(f"group {group!r}: both R1 and R2 FASTQs are required")
+    keys1 = [_fastq_pair_key(path) for path in r1]
+    keys2 = [_fastq_pair_key(path) for path in r2]
+    if len(set(keys1)) != len(keys1) or len(set(keys2)) != len(keys2):
+        raise ValueError(f"group {group!r}: duplicate FASTQ pair identifiers")
+    if sorted(keys1) != sorted(keys2):
+        missing_r2 = sorted(set(keys1) - set(keys2))
+        missing_r1 = sorted(set(keys2) - set(keys1))
+        raise ValueError(
+            f"group {group!r}: unpaired FASTQs; "
+            f"missing R2={missing_r2}, missing R1={missing_r1}"
+        )
+
+
+def _group_suffix(group: str) -> str:
+    match = re.search(r"(\d+)$", group)
+    return f"-L{match.group(1)}" if match else f"-{group}"
+
+
 # Pre-resolve sgRNA FASTQ for all groups, inject into GROUPS dict
 for gname, gcfg in GROUPS.items():
     gcfg["_sgRNA_r1"] = _resolve_sgRNA_fastq(gcfg, "r1")
     gcfg["_sgRNA_r2"] = _resolve_sgRNA_fastq(gcfg, "r2")
+    _validate_fastq_pairs(gname, gcfg["_sgRNA_r1"], gcfg["_sgRNA_r2"])
     # Pre-resolve pre-trimmed FASTQ only if preprocess.trimmed is enabled
     if config.get("preprocess", {}).get("trimmed", False):
         _trim_dir = os.path.join(gcfg["sgRNA_fastq_dir"], "trimmed")
@@ -65,6 +96,13 @@ for gname, gcfg in GROUPS.items():
     else:
         gcfg["_sgRNA_r1_trimmed"] = []
         gcfg["_sgRNA_r2_trimmed"] = []
+
+_GROUP_SUFFIXES = {group: _group_suffix(group) for group in GROUPS}
+if len(set(_GROUP_SUFFIXES.values())) != len(_GROUP_SUFFIXES):
+    raise ValueError(
+        "group names produce colliding lane suffixes: "
+        + ", ".join(f"{group}={suffix}" for group, suffix in _GROUP_SUFFIXES.items())
+    )
 
 
 # ---- Chemistry resolution ----
@@ -89,17 +127,20 @@ def _resolve_chemistry(cfg):
 
     if chem == "custom":
         spec = dict(cfg.get("custom_chemistry", {}))
-        required = ["af_chemistry", "whitelist", "expected_ori",
+        required = ["af_chemistry", "whitelist",
                      "translation", "ham_chemistry", "umi_len"]
         for k in required:
             if k not in spec:
                 raise ValueError(
                     f"custom_chemistry missing required key: {k}")
     else:
-        spec = dict(_CHEMISTRY_SPEC.get(
-            chem, _CHEMISTRY_SPEC.get("3v3", {})))
-        if not spec:
-            raise ValueError(f"Unknown tenx_chemistry: {chem}")
+        if chem not in _CHEMISTRY_SPEC:
+            raise ValueError(
+                f"Unknown tenx_chemistry {chem!r}; supported values: "
+                + ", ".join(sorted(_CHEMISTRY_SPEC))
+                + ", custom"
+            )
+        spec = dict(_CHEMISTRY_SPEC[chem])
         spec.update(overrides)
 
     cfg["_chemistry"] = spec
@@ -223,7 +264,7 @@ for _m in _assignment_methods:
     _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
 
 # Multimodal integration is required whenever assignment is configured and
-# writes one canonical artifact for optional downstream status estimation.
+# writes the canonical input for the configured status-estimation branch.
 _integration_output = "perturbation_adata.h5ad"
 _integration_methods = _assignment_methods
 if _assignment_methods:

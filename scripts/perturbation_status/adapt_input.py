@@ -339,7 +339,7 @@ def main() -> None:
 
     manifest = {
         "module": "M03",
-        "method": "Mixscape",
+        "method": config.get("method", "unspecified"),
         "dataset": config["dataset"],
         "source_h5ad": str(source_h5ad.resolve()),
         "source_shape": [n_cells, n_features],

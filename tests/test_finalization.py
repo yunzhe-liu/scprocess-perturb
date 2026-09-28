@@ -114,6 +114,23 @@ class FinalizationTests(unittest.TestCase):
             self.assertIn("Status coverage mismatch", process.stderr)
             self.assertFalse(output.exists())
 
+    def test_empty_status_is_valid_when_no_cells_are_eligible(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            make_input(directory / "input.h5ad")
+            source = ad.read_h5ad(directory / "input.h5ad")
+            source.obs["assignment_structure"] = "mixed_construct"
+            source.write_h5ad(directory / "input.h5ad")
+            status = directory / "status.tsv.gz"
+            pd.DataFrame(columns=[
+                "cell_id", "target_label", "is_ntc", "assignment_structure",
+                "method", "score", "native_status", "scorable",
+                "unscorable_reason",
+            ]).to_csv(status, sep="\t", index=False, compression="gzip")
+            _, output, _ = self.run_finalize(directory, "ps", status)
+            result = ad.read_h5ad(output)
+            self.assertTrue((result.obs["perturbation_status_reason"] == "not_eligible").all())
+
 
 if __name__ == "__main__":
     unittest.main()

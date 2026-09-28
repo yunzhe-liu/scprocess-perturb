@@ -1,0 +1,2 @@
+construct_id,guide_id,guide_sequence,target_label,guide_position
+c1,g1,ACGTACGTACGTACGTACGT,GENE1,1

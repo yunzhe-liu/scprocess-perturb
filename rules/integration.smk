@@ -4,7 +4,7 @@
 # Existing MEX and assignment outputs remain unchanged; integration produces
 # one canonical AnnData artifact for downstream processing.
 #
-# Input cell universe: concatenated per-group GEX cells.
+# Input cell universe: assigned cells in the concatenated per-group GEX inputs.
 # Cell keys: normalized 16mer + the same group suffix used by merge.smk.
 # ============================================================================
 
@@ -52,6 +52,7 @@ rule integrate_multimodal:
         counts_source = INTEGRATION_CONFIG.get("counts_source", ""),
         normalized_source = INTEGRATION_CONFIG.get("normalized_source", ""),
         input_kind = INTEGRATION_CONFIG.get("input_kind", "auto"),
+        cell_id_matching = INTEGRATION_CONFIG.get("cell_id_matching", "auto"),
         counts_layer = INTEGRATION_CONFIG.get("counts_layer", "counts"),
         target_sum = INTEGRATION_CONFIG.get("target_sum", 10000.0),
         max_materialized_nnz = INTEGRATION_CONFIG.get(
@@ -71,6 +72,7 @@ rule integrate_multimodal:
             "assignment": {"guide_design": GUIDE_DESIGN},
             "integration": {
                 "input_kind": INTEGRATION_CONFIG.get("input_kind", "auto"),
+                "cell_id_matching": INTEGRATION_CONFIG.get("cell_id_matching", "auto"),
                 "counts_layer": INTEGRATION_CONFIG.get("counts_layer", "counts"),
                 "target_sum": INTEGRATION_CONFIG.get("target_sum", 10000.0),
                 "counts_source": INTEGRATION_CONFIG.get("counts_source", ""),
@@ -88,10 +90,6 @@ rule integrate_multimodal:
         set -euo pipefail
         exec &> {log}
 
-        CONDA_BASE="$HOME/software/miniconda3"
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        conda activate scp_analysis
-
         python3 "{params.script}" \\
             {params.gex_args} \\
             --assign "{params.assignment}" \\
@@ -101,6 +99,7 @@ rule integrate_multimodal:
             --counts-source "{params.counts_source}" \\
             --normalized-source "{params.normalized_source}" \\
             --input-kind "{params.input_kind}" \\
+            --cell-id-matching "{params.cell_id_matching}" \\
             --counts-layer "{params.counts_layer}" \\
             --target-sum "{params.target_sum}" \\
             --max-materialized-nnz "{params.max_materialized_nnz}" \\

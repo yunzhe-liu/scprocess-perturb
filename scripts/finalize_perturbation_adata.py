@@ -185,6 +185,8 @@ def build_status(method: str, status_path: Path | None, arrays: dict[str, np.nda
             f"included noneligible={len(noneligible_status)}"
         )
     methods = {str(x).lower() for x in status["method"].dropna().unique()}
+    if status.empty and not eligible_ids:
+        methods = {method}
     if methods != {method}:
         raise ValueError(f"Status method mismatch: expected {method}, observed {sorted(methods)}")
     status = status.set_index("cell_id").reindex(cells[eligible.to_numpy()])

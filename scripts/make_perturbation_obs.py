@@ -23,6 +23,8 @@ Usage:
 import argparse, csv, gzip, os, time
 from collections import defaultdict
 
+from guide_library import guide_id_aliases, normalize_guide_library
+
 
 def _smart_open(path, mode='rt'):
     """Open a file, handling gzip transparently."""
@@ -43,8 +45,8 @@ CONFIDENCE_TIERS = {
         "mid":  5,       # >= 5: medium
     },
     "fishash": {
-        "score_type": "neg_log_pval",
-        "high": 15,      # more negative = more significant
+        "score_type": "negative_log_pval",
+        "high": 15,
         "mid":  10,
     },
 }
@@ -73,32 +75,24 @@ def classify_confidence(method, score):
 def _expand_dual_csv(csv_path):
     """dual-guide CSV (sgID_A, sgID_B, gene, pair_id) -> {guide_id: (pid, gene)}."""
     guide_map = {}
-    with _smart_open(csv_path) as f:
-        for row in csv.DictReader(f):
-            gene = row.get("gene", "").strip()
-            pid = (row.get("pair_id") or row.get("unique sgRNA pair ID", "")).strip()
-            for col in ("sgID_A", "sgID_B"):
-                sg = row.get(col, "").strip()
-                if sg:
-                    guide_map[sg] = (pid, gene)
+    library = normalize_guide_library(csv_path, require_sequence=False)
+    for row in library.to_dict(orient="records"):
+        for guide in guide_id_aliases(row["guide_id"]):
+            guide_map[guide] = (row["construct_id"], row["target_label"])
     return guide_map
 
 
 def _load_single_or_multi_csv(csv_path):
-    """single/multi CSV (guide_id, gene [, construct_id]) -> {guide_id: (cid, gene)}.
+    """Canonical or legacy single/multi CSV -> {guide_id: (cid, target)}.
 
     - single mode: construct_id column is optional/absent -> cid = "".
     - multi  mode: construct_id column is required.
     """
     guide_map = {}
-    with _smart_open(csv_path) as f:
-        for row in csv.DictReader(f):
-            gid = row.get("guide_id", "").strip()
-            gene = row.get("gene", "").strip()
-            if not gid:
-                continue
-            cid = row.get("construct_id", "").strip() if "construct_id" in row else ""
-            guide_map[gid] = (cid, gene)
+    library = normalize_guide_library(csv_path, require_sequence=False)
+    for row in library.to_dict(orient="records"):
+        for guide in guide_id_aliases(row["guide_id"]):
+            guide_map[guide] = (row["construct_id"], row["target_label"])
     return guide_map
 
 
@@ -117,10 +111,8 @@ def main():
                         choices=["single", "dual", "multi"],
                         help="single | dual | multi")
     parser.add_argument("--guide-csv", default="",
-                        help="Guide mapping CSV. "
-                             "single/multi: columns guide_id,gene[,construct_id]. "
-                             "dual: columns sgID_A,sgID_B,gene,pair_id. "
-                             "single mode: omit if guide_id == gene name.")
+                        help="Canonical long guide library or a supported legacy table; "
+                             "single mode may omit it when guide_id is the target label.")
     parser.add_argument("--method", required=True,
                         help="Assignment method name")
     args = parser.parse_args()
