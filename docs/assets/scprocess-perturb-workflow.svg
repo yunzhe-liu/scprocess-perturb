@@ -19,7 +19,7 @@
 <g><circle cx="78" cy="240" r="17" fill="#6E7D83"/><text x="78" y="245" text-anchor="middle" class="num">1</text><text x="108" y="246" class="stage-title">Data Inputs</text><text x="60" y="275" class="stage-sub">READS &amp; EXPRESSION</text></g>
 <g><circle cx="313" cy="240" r="17" fill="#547FA9"/><text x="313" y="245" text-anchor="middle" class="num">2</text><text x="343" y="246" class="stage-title">Guide Extraction</text><text x="295" y="275" class="stage-sub">PER-LANE PROCESSING</text></g>
 <g><circle cx="613" cy="240" r="17" fill="#8B70AA"/><text x="613" y="245" text-anchor="middle" class="num">3</text><text x="643" y="246" class="stage-title">Merge &amp; Assignment</text><text x="595" y="275" class="stage-sub">CROSS-LANE RESOLUTION</text></g>
-<g><circle cx="913" cy="240" r="17" fill="#32998C"/><text x="913" y="245" text-anchor="middle" class="num">4</text><text x="943" y="246" class="stage-title">Integration</text><text x="895" y="275" class="stage-sub">MULTIMODAL DATA</text></g>
+<g><circle cx="913" cy="240" r="17" fill="#32998C"/><text x="913" y="245" text-anchor="middle" class="num">4</text><text x="943" y="246" class="stage-title">Integration</text><text x="895" y="275" class="stage-sub">PERTURBATION DATA</text></g>
 <g><circle cx="1168" cy="240" r="17" fill="#65A47F"/><text x="1168" y="245" text-anchor="middle" class="num">5</text><text x="1198" y="246" class="stage-title">Status Estimation</text><text x="1150" y="275" class="stage-sub">BIOLOGICAL ANNOTATION</text></g>
 <g><circle cx="1423" cy="240" r="17" fill="#D9765B"/><text x="1423" y="245" text-anchor="middle" class="num">6</text><text x="1453" y="246" class="stage-title">Validate &amp; Standardize</text><text x="1405" y="275" class="stage-sub">VALIDATED OUTPUT</text></g>
 
@@ -52,7 +52,7 @@
 <text x="733" y="574" text-anchor="middle" class="node-title">Perturbation Call</text><text x="733" y="599" text-anchor="middle" class="node-sub">perturbation_obs.csv</text>
 
 <rect x="910" y="360" width="200" height="100" rx="11" class="node" fill="#E1F2EF" stroke="#88C3B9"/>
-<text x="1010" y="400" text-anchor="middle" class="node-title">Multimodal Integration</text><text x="1010" y="430" text-anchor="middle" class="node-sub">expression + guide assignment</text>
+<text x="1010" y="400" text-anchor="middle" class="node-title">Perturbation Integration</text><text x="1010" y="430" text-anchor="middle" class="node-sub">expression + guide assignment</text>
 <path d="M1010 460V510" class="inner"/>
 <rect x="910" y="510" width="200" height="80" rx="11" class="node" fill="#CFE9E4" stroke="#78B9AE"/>
 <text x="1010" y="558" text-anchor="middle" class="node-title">Integrated AnnData</text>

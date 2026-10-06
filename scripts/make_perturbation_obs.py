@@ -3,7 +3,7 @@
 Convert standardized assignment CSV to per-cell perturbation call.
 
 Reads the unified-schema assignment CSV and produces perturbation_obs.csv —
-a (cell -> perturbation identity) mapping ready for multimodal integration.
+a (cell -> perturbation identity) mapping ready for perturbation integration.
 
 Supports three guide_design modes:
 

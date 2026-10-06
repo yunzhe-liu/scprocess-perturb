@@ -113,7 +113,7 @@ complete candidate set remains available for structure classification.
 └── guide_qc.csv              pgmm_em only
 ```
 
-## Multimodal integration details
+## Perturbation integration details
 
 Integration accepts `.h5`, `.h5ad`, and `.h5mu` expression inputs. For `.h5mu`,
 the `rna` modality is used.

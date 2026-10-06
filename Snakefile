@@ -1,7 +1,7 @@
 # ==============================================================================
 # scprocess-perturb — Snakefile
 # ==============================================================================
-# Perturb-seq guide extraction → assignment → multimodal integration. GEX
+# Perturb-seq guide extraction → assignment → perturbation integration. GEX
 # matrices come from an external pre-processing step and are direct inputs.
 #   guide_fasta → sgRNA_index ────────────────────────┐
 #   gex_h5 (external) → extract_whitelist ────────────┤
@@ -263,14 +263,14 @@ for _m in _assignment_methods:
     _assignment_targets.append(os.path.join(_base, "assignments.csv"))
     _assignment_targets.append(os.path.join(_base, "perturbation_obs.csv"))
 
-# Multimodal integration is required whenever assignment is configured and
+# Perturbation integration is required whenever assignment is configured and
 # writes the canonical input for the configured status-estimation branch.
 _integration_output = "perturbation_adata.h5ad"
 _integration_methods = _assignment_methods
 if _assignment_methods:
     if len(_integration_methods) != 1:
         sys.exit(
-            "ERROR: multimodal integration requires exactly one assignment method"
+            "ERROR: perturbation integration requires exactly one assignment method"
         )
     if _integration_methods[0] not in _assignment_methods:
         sys.exit("ERROR: integration method must be listed in assignment.methods")

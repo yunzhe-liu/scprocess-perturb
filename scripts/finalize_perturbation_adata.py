@@ -309,7 +309,7 @@ def copy_and_annotate(source: Path, destination: Path, status: pd.DataFrame, met
                 "representation": "upstream normalized and log-transformed expression",
                 "finalization_action": "validated and preserved; not recomputed or rescaled",
                 "counts_layer": "counts",
-                "normalization_provenance": "inherited from multimodal integration",
+                "normalization_provenance": "inherited from perturbation integration",
             }
             finalization = {
                 "status_method": method,

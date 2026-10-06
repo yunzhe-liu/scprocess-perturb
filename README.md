@@ -4,7 +4,7 @@
 
 `scprocess-perturb` processes Perturb-seq guide FASTQs together with a gene
 expression matrix and produces a validated, analysis-ready AnnData dataset. The
-workflow covers guide extraction, guide assignment, multimodal integration,
+workflow covers guide extraction, guide assignment, perturbation integration,
 perturbation-status estimation, and data validation and standardization.
 
 ## Workflow overview
@@ -22,7 +22,7 @@ The complete workflow follows six stages:
 6. Validate the data contract and write the standardized AnnData output.
 
 The workflow can also stop at an earlier target, such as guide extraction or
-multimodal integration.
+perturbation integration.
 
 ## Main output
 
@@ -170,7 +170,7 @@ The canonical assignment result is:
 ```
 
 It retains every candidate that passes the selected method's filter and is the
-input to multimodal integration. `perturbation_obs.csv` is an additional
+input to perturbation integration. `perturbation_obs.csv` is an additional
 per-cell summary produced according to `guide_design`; it is not the primary
 integration input.
 
@@ -189,7 +189,7 @@ tables using `sgID_A/sgID_B` remain accepted and are normalized internally.
 Method parameters and intermediate assignment outputs are documented in
 [Workflow details](docs/workflow-details.md#guide-assignment-details).
 
-### 4. Multimodal integration
+### 4. Perturbation integration
 
 Integration combines the selected `assignments.csv` with the expression matrix
 and source metadata:
@@ -349,7 +349,7 @@ snakemake --use-conda --conda-frontend conda --cores 48 \
   /path/to/results/guide_matrix/merged_matrix.mtx.gz
 ```
 
-Stop after multimodal integration:
+Stop after perturbation integration:
 
 ```bash
 snakemake --use-conda --conda-frontend conda --cores 8 \

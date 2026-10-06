@@ -3,7 +3,7 @@
 # ==============================================================================
 # Runs assignment methods on the merged (cells x guides) guide count matrix,
 # standardises each method's output to a unified schema, and produces a
-# per-cell perturbation call table for downstream multimodal integration.
+# per-cell perturbation call table for downstream perturbation integration.
 #
 # Methods supported:
 #   pgmm_em        — PGMM EM (default, provides prob_gaussian confidence)

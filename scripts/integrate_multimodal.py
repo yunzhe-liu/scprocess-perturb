@@ -1554,7 +1554,7 @@ def integrate(
     }
     computed_normalization = expression.normalized_origin.startswith("computed")
     adata.uns["standardization"] = {
-        "adapter": "scprocess-perturb multimodal integration",
+        "adapter": "scprocess-perturb perturbation integration",
         "adapter_contract": "M01",
         "counts_origin": expression.counts_origin,
         "normalized_origin": expression.normalized_origin,
