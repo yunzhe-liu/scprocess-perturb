@@ -62,7 +62,7 @@
 <text x="1265" y="454" text-anchor="middle" class="node-sub">Mixscape | PS</text>
 <path d="M1265 475V510" class="inner"/>
 <rect x="1165" y="510" width="200" height="80" rx="11" class="node" fill="#E6F2E8" stroke="#91BDA0"/>
-<text x="1265" y="544" text-anchor="middle" class="node-title">Status Annotation</text><text x="1265" y="569" text-anchor="middle" class="node-sub">score • label • reason</text>
+<text x="1265" y="544" text-anchor="middle" class="node-title">Response Annotation</text><text x="1265" y="569" text-anchor="middle" class="node-sub">score • label • reason</text>
 
 <rect x="1420" y="360" width="210" height="100" rx="11" class="node" fill="#FBECE7" stroke="#E1A08D"/>
 <text x="1525" y="405" text-anchor="middle" class="node-title">Standardization &amp;</text><text x="1525" y="428" text-anchor="middle" class="node-title">Validation</text>

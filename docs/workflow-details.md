@@ -3,7 +3,7 @@
 This document collects method parameters, intermediate outputs, environments,
 and implementation information that are not required for a first workflow run.
 
-## Guide extraction details
+## Guide Extraction details
 
 ### simpleaf
 
@@ -32,7 +32,7 @@ hash_matcher:
   cb_max_hamming: 1
 ```
 
-## Guide assignment details
+## Guide Assignment details
 
 ### Methods and parameters
 
@@ -113,7 +113,7 @@ complete candidate set remains available for structure classification.
 └── guide_qc.csv              pgmm_em only
 ```
 
-## Perturbation integration details
+## Perturbation Integration details
 
 Integration accepts `.h5`, `.h5ad`, and `.h5mu` expression inputs. For `.h5mu`,
 the `rna` modality is used.
@@ -158,7 +158,7 @@ python scripts/integrate_multimodal.py \
   --out /path/to/perturbation_adata.h5ad
 ```
 
-## Perturbation-status details
+## Perturbation Status Estimation details
 
 Mixscape and PS are alternatives and are not run sequentially. Both consume a
 temporary method input built from status-eligible cells. Outputs are standardized
@@ -184,7 +184,7 @@ no runnable target writes explicit unscorable records and a skip reason instead
 of failing on empty shards. Method work files are removed after success unless
 `perturbation_status.keep_work: true` is configured.
 
-## Data validation and standardization details
+## Data Standardization and Validation details
 
 The final stage scans `.X` and `layers["counts"]`, checks required metadata and
 status coverage, writes the fixed status interface to a temporary H5AD, and
@@ -200,7 +200,7 @@ finalization:
 ```
 
 The internal configuration and rule retain the name `finalization`; the
-user-facing workflow stage is Data validation and standardization.
+user-facing workflow stage is Data Standardization and Validation.
 
 ## Conda environments
 
@@ -210,7 +210,7 @@ user-facing workflow stage is Data validation and standardization.
 | `envs/simpleaf.lock.yaml` | simpleaf, piscem, and alevin-fry |
 | `envs/mixscape.yaml` | Mixscape status estimation |
 | `envs/ps.yaml` | PS status estimation |
-| `envs/finalization.yaml` | Data validation and standardized output |
+| `envs/finalization.yaml` | Data Standardization and Validation |
 
 With `--use-conda`, Snakemake creates rule-specific environments as needed.
 

@@ -23,7 +23,7 @@ groups_file: config/groups.yaml
 # assigned guide IDs to genes/constructs during assignment.
 guide_csv: /path/to/guide_library.csv
 
-# ── Guide extraction ──
+# ── Guide Extraction ──
 guide_extraction:
   method: simpleaf                    # simpleaf (default) | hash_matcher
 
@@ -67,7 +67,7 @@ simpleaf:
 #   simpleaf_index_threads: 4
 #   hash_quant_threads: 4
 
-# ── Guide assignment (v0.2.0+) ──
+# ── Guide Assignment (v0.2.0+) ──
 # Remove this entire section to produce guide_matrix/ only.
 assignment:
   guide_design: dual                  # single | dual | multi
@@ -89,7 +89,7 @@ assignment:
   # - umi_threshold              # simple UMI >= threshold filter (default t=3)
   # - fishash                    # Fisher exact test (needs R + fishash package)
 
-# ── Perturbation integration ──
+# ── Perturbation Integration ──
 # Produces one canonical perturbation_adata.h5ad artifact.
 integration:
   input_kind: auto                    # auto | counts | standardized
@@ -105,7 +105,7 @@ integration:
   min_free_disk_gb: 200                # reserve kept free after output estimate
   max_process_memory_gb: 192           # virtual-memory ceiling for integration
 
-# ── Perturbation-status estimation ──
+# ── Perturbation Status Estimation ──
 # Select Mixscape or PS explicitly; `none` skips calculation but preserves the interface.
 perturbation_status:
   method: none                         # none | mixscape | ps
@@ -118,7 +118,7 @@ perturbation_status:
   # seed: 20260902
   # keep_work: false                   # retain large method intermediates after success
 
-# ── Data validation and standardization ──
+# ── Data Standardization and Validation ──
 # Always runs after integration or the selected perturbation-status method.
 # It validates and preserves X/counts; no cell or gene filtering is performed.
 finalization:

@@ -4,8 +4,8 @@
 
 `scprocess-perturb` processes Perturb-seq guide FASTQs together with a gene
 expression matrix and produces a validated, analysis-ready AnnData dataset. The
-workflow covers guide extraction, guide assignment, perturbation integration,
-perturbation-status estimation, and data validation and standardization.
+workflow covers Guide Extraction, Guide Assignment, Perturbation Integration,
+Perturbation Status Estimation, and Data Standardization and Validation.
 
 ## Workflow overview
 
@@ -52,7 +52,7 @@ snakemake --use-conda --conda-frontend conda \
 ```
 
 The default template uses `simpleaf` for guide extraction, `pgmm_em` for guide
-assignment, `dual` guide design, and `none` for perturbation-status estimation.
+assignment, `dual` guide design, and `none` for Perturbation Status Estimation.
 For a complete run, configure exactly one assignment method. To compare multiple
 assignment methods, run the workflow separately for each method.
 
@@ -113,7 +113,7 @@ output is the merged guide-count matrix without integration.
 
 ## Workflow stages
 
-### 1. Guide extraction
+### 1. Guide Extraction
 
 Guide extraction quantifies guide UMIs independently for each lane. Two engines
 are supported:
@@ -144,7 +144,7 @@ This orientation is consumed directly by the workflow's assignment methods. It
 is not the conventional 10x features × cells orientation; transpose it before
 using software that assumes the standard 10x layout.
 
-### 3. Guide assignment
+### 3. Guide Assignment
 
 Assignment identifies valid guide candidates for every cell. Select one method
 per complete workflow run:
@@ -189,7 +189,7 @@ tables using `sgID_A/sgID_B` remain accepted and are normalized internally.
 Method parameters and intermediate assignment outputs are documented in
 [Workflow details](docs/workflow-details.md#guide-assignment-details).
 
-### 4. Perturbation integration
+### 4. Perturbation Integration
 
 Integration combines the selected `assignments.csv` with the expression matrix
 and source metadata:
@@ -243,7 +243,7 @@ it was computed by this workflow.
 The integration H5AD is an intermediate standard input for status estimation
 and the final validation stage; it is not the primary workflow deliverable.
 
-### 5. Perturbation-status estimation
+### 5. Perturbation Status Estimation
 
 Mixscape and PS are parallel choices. Specify one method to run estimation:
 
@@ -257,9 +257,10 @@ perturbation_status:
   memory_gb: 64
 ```
 
-The default `method: none` skips status calculation and proceeds directly to
-data validation and standardization. In every branch, the final H5AD has the
-same status columns.
+Perturbation Status Estimation remains part of the workflow structure in every
+branch. Mixscape or PS performs model-based estimation; the default
+`method: none` skips model computation while preserving the same status columns
+in the final H5AD.
 
 Mixscape and PS operate on `single_guide` and `concordant_construct` cells and
 retain the eligible non-targeting control pool. `mixed_construct` cells remain
@@ -270,7 +271,7 @@ complete, ordered S/U/A layout is strictly detected and converted to gene-level
 S+A counts for the status method only; U is excluded. Malformed USA-like input
 terminates with an error. The integration and final H5AD matrices are unchanged.
 
-### 6. Data validation and standardization
+### 6. Data Standardization and Validation
 
 The final stage validates the expression contract, status coverage, required
 metadata, and output readability, then writes:

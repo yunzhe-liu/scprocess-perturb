@@ -1,4 +1,4 @@
-# Data validation and standardization. Expression matrices and cell/gene universes are
+# Data Standardization and Validation. Expression matrices and cell/gene universes are
 # preserved; this rule validates contracts and adds a fixed status interface.
 
 FINAL_CONFIG = config.get("finalization", {})
