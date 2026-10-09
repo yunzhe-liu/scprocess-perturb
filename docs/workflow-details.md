@@ -188,8 +188,12 @@ of failing on empty shards. Method work files are removed after success unless
 
 The final stage scans `.X` and `layers["counts"]`, checks required metadata and
 status coverage, writes the fixed status interface to a temporary H5AD, and
-publishes it only after independent validation. It does not filter observations
-or variables; cells without assignment were already removed during integration.
+publishes it only after independent validation. It then writes a compact
+`{out_dir}/final/provenance.yaml` record containing the workflow commit,
+resolved configuration, software/environment specifications, inputs, ordered
+processing operations, matrix semantics, validation status, and output file
+metadata. It does not filter observations or variables; cells without
+assignment were already removed during integration.
 
 ```yaml
 finalization:
@@ -223,7 +227,7 @@ With `--use-conda`, Snakemake creates rule-specific environments as needed.
 5. `assignment.smk` produces canonical guide candidates and a per-cell summary.
 6. `integration.smk` combines expression and assignment in AnnData.
 7. `perturbation_status.smk` runs Mixscape or PS when selected.
-8. `finalization.smk` validates and writes the final H5AD.
+8. `finalization.smk` validates the final H5AD and writes `provenance.yaml`.
 
 ## Repository layout
 
@@ -253,6 +257,7 @@ scprocess-perturb/
 │   ├── run_perturbation_status.py
 │   ├── finalize_perturbation_adata.py
 │   ├── validate_final_adata.py
+│   ├── write_provenance.py
 │   └── perturbation_status/
 ├── envs/
 └── tests/

@@ -293,6 +293,9 @@ if _assignment_methods:
     _assignment_targets.append(
         os.path.join(config["out_dir"], "final", "perturbation_adata.h5ad")
     )
+    _assignment_targets.append(
+        os.path.join(config["out_dir"], "final", "provenance.yaml")
+    )
 
 rule all:
     input:

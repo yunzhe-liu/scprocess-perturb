@@ -7,4 +7,5 @@ dependencies:
   - h5py
   - numpy
   - pandas
+  - pyyaml
   - scipy

@@ -29,13 +29,18 @@ perturbation integration.
 A complete run writes one primary result:
 
 ```text
-{out_dir}/final/perturbation_adata.h5ad
+{out_dir}/final/
+├── perturbation_adata.h5ad
+└── provenance.yaml
 ```
 
 The final H5AD contains expression, original counts, source metadata, all valid
 guide candidates, construct annotations, assignment structure, and the common
 perturbation-status interface. It can be used as the preprocessing output for
 downstream perturbation analysis even when status estimation is skipped.
+`provenance.yaml` is a compact run record containing the workflow commit,
+resolved parameters, principal software/environment specifications, inputs,
+processing operations, matrix semantics, validation status, and output details.
 
 ## Quick start
 
@@ -380,7 +385,8 @@ Common options:
 │   └── perturbation_adata.h5ad        integrated intermediate AnnData
 ├── perturbation_status/{method}/     present for Mixscape or PS
 └── final/
-    └── perturbation_adata.h5ad        primary workflow output
+    ├── perturbation_adata.h5ad        primary workflow output
+    └── provenance.yaml                compact traceability record
 ```
 
 Run logs are written under `{log_dir}` by workflow stage.
