@@ -48,6 +48,7 @@ rule build_sgRNA_index:
         out_dir   = config["references"]["sgRNA_index_dir"],
         kmer      = config["simpleaf"]["index"]["kmer_length"],
         minimizer = config["simpleaf"]["index"]["minimizer_length"],
+        dictionary = config["simpleaf"]["index"]["dictionary"],
         af_home   = config["simpleaf"]["af_home"],
     threads: config["resources"]["simpleaf_index_threads"]
     conda:
@@ -64,7 +65,8 @@ rule build_sgRNA_index:
             --threads {threads} \
             --ref-seq "{input.fasta}" \
             --kmer-length {params.kmer} \
-            --minimizer-length {params.minimizer}
+            --minimizer-length {params.minimizer} \
+            --dict {params.dictionary}
 
         # simpleaf writes index to out_dir/index/,
         # but quant expects index files at parent dir; create symlinks

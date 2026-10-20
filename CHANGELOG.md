@@ -2,6 +2,19 @@
 
 Archival version history for scprocess-perturb.
 
+### v1.0.0 — 2026-10-20
+
+- First thesis-release candidate covering guide extraction and quantification,
+  assignment, perturbation integration, perturbation-status estimation, and
+  final data standardization and validation.
+- Added the canonical analysis-ready `perturbation_adata.h5ad` output with
+  counts, normalized expression, complete guide candidates, construct
+  annotations, and a fixed perturbation-status interface.
+- Added compact `provenance.yaml` run records and a real FASTQ-to-final-H5AD
+  end-to-end smoke test.
+- Fully resolved the finalization, Mixscape, and PS Conda environments for
+  linux-64; non-Conda R packages remain pinned to immutable Git commits.
+
 ### v0.2.5 — 2026-08-12
 
 - **Canonical `_raw_assignments.csv` order (pgmm_em):** rows are sorted

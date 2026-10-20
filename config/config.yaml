@@ -34,6 +34,7 @@ simpleaf:
 #   index:
 #     kmer_length: 15
 #     minimizer_length: 11
+#     dictionary: sshash             # deterministic piscem index backend
 #   quant:
 #     resolution: parsimony-gene      # parsimony-gene | cr-like
 #     use_knee: false                 # true = knee calling (no whitelist needed)

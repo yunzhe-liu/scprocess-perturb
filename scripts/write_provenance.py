@@ -104,6 +104,14 @@ def _git_record(project_dir: Path) -> dict:
     }
 
 
+def _workflow_version(project_dir: Path) -> str:
+    try:
+        version = (project_dir / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+    return version or "unknown"
+
+
 def _package_versions() -> dict:
     versions = {"python": platform.python_version()}
     for package in KEY_PACKAGES:
@@ -255,6 +263,7 @@ def build_provenance(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "workflow": {
             "name": "scprocess-perturb",
+            "version": _workflow_version(project_dir),
             "engine": "Snakemake",
             "engine_version": snakemake_version,
             **_git_record(project_dir),

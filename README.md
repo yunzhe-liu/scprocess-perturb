@@ -6,27 +6,19 @@
 expression matrix and produces a validated, analysis-ready AnnData dataset. The
 workflow covers Guide Extraction, Guide Assignment, Perturbation Integration,
 Perturbation Status Estimation, and Data Standardization and Validation.
+The thesis-release version is `v1.0.0`.
 
 ## Workflow overview
 
 ![scprocess-perturb workflow overview](docs/assets/scprocess-perturb-workflow.svg)
 
-The complete workflow follows six stages:
-
-1. Read guide FASTQs and expression matrices.
-2. Quantify guide UMIs independently for each lane.
-3. Merge lanes and assign valid guides to cells.
-4. Integrate expression, assignment, construct, and source metadata.
-5. Run Mixscape or PS when a perturbation-status method is specified; otherwise
-   skip the calculation while retaining a common output interface.
-6. Validate the data contract and write the standardized AnnData output.
-
-The workflow can also stop at an earlier target, such as guide extraction or
-perturbation integration.
+The workflow covers guide input, per-lane quantification, assignment,
+expression integration, perturbation-status estimation, and final validation.
+It can also stop at an earlier target.
 
 ## Main output
 
-A complete run writes one primary result:
+A complete run writes one primary dataset and its companion provenance record:
 
 ```text
 {out_dir}/final/
@@ -34,13 +26,10 @@ A complete run writes one primary result:
 └── provenance.yaml
 ```
 
-The final H5AD contains expression, original counts, source metadata, all valid
-guide candidates, construct annotations, assignment structure, and the common
-perturbation-status interface. It can be used as the preprocessing output for
-downstream perturbation analysis even when status estimation is skipped.
-`provenance.yaml` is a compact run record containing the workflow commit,
-resolved parameters, principal software/environment specifications, inputs,
-processing operations, matrix semantics, validation status, and output details.
+The H5AD contains expression, counts, source metadata, guide candidates,
+construct annotations, assignment structure, and a fixed status interface.
+`provenance.yaml` records the workflow version, parameters, environments,
+inputs, operations, matrix semantics, validation, and output metadata.
 
 ## Quick start
 
@@ -54,6 +43,12 @@ conda activate scp_analysis
 # Edit config/config.yaml and config/groups.yaml, then run:
 snakemake --use-conda --conda-frontend conda \
   --configfile config/config.yaml --cores 48
+```
+
+Run the bundled end-to-end smoke test with:
+
+```bash
+conda run -n scp_analysis python tests/smoke_test.py
 ```
 
 The default template uses `simpleaf` for guide extraction, `pgmm_em` for guide
@@ -128,26 +123,14 @@ are supported:
 | `simpleaf` | piscem indexing followed by alevin-fry quantification and UMI resolution |
 | `hash_matcher` | HAM exact/hash-based guide matching with configurable barcode error tolerance |
 
-The expression matrix normally supplies the cell barcode whitelist. With
-simpleaf, `simpleaf.quant.use_knee: true` enables UMI-knee cell calling when a
-GEX-derived whitelist is not used. HAM requires a whitelist.
+The expression matrix normally supplies the cell barcode whitelist. Simpleaf
+can instead use UMI-knee cell calling; HAM requires a whitelist.
 
 ### 2. Lane merge
 
-Per-lane guide matrices are vertically concatenated, and cell barcodes receive
-`-L{NN}` lane suffixes. The merged output is a Matrix Market trio in the
-workflow's **cells × guides** orientation:
-
-```text
-{out_dir}/guide_matrix/
-├── merged_matrix.mtx.gz
-├── merged_barcodes.tsv.gz
-└── merged_features.tsv.gz
-```
-
-This orientation is consumed directly by the workflow's assignment methods. It
-is not the conventional 10x features × cells orientation; transpose it before
-using software that assumes the standard 10x layout.
+Per-lane guide matrices are concatenated and cell barcodes receive `-L{NN}`
+lane suffixes. The merged Matrix Market output uses cells × guides orientation,
+not the conventional 10x features × cells orientation.
 
 ### 3. Guide Assignment
 
@@ -219,12 +202,6 @@ Expression cells without a valid assignment are excluded from the integration
 output. Their number, together with assignment rows lacking an expression cell,
 is reported in the integration log and provenance metadata.
 
-Cell-ID matching is selected once per dataset: exact IDs, `barcode_16mer` plus
-lane, or pure 16-mer matching. `integration.cell_id_matching: auto` selects the
-best supported representation. `pure_16mer` is available for merged inputs
-whose lane labels are not comparable; repeated expression barcodes then retain
-the first row in stable input order and the count is reported in the log.
-
 #### Expression contract
 
 ```text
@@ -232,49 +209,26 @@ the first row in stable input order and the count is reported in the log.
 .layers["counts"]     original integer-valued counts
 ```
 
-Input handling follows these rules:
-
-- If `layers["counts"]` exists, it is retained as the counts layer.
-- Integer-typed `.X` is automatically recognized as raw counts and normalized
-  as per-cell `log1p(counts / cell_total × 10000)`.
-- Floating-point `.X` is not automatically treated as raw counts. Use
-  `integration.input_kind: counts` only after verifying that it contains counts.
-- A normalized `.X` without an aligned counts layer or counts source is rejected.
-
-The output records whether normalization was computed by the workflow or
-preserved from upstream. Upstream normalization is not relabeled as CP10K unless
-it was computed by this workflow.
+Existing counts layers are retained. Integer `.X` is treated as counts and
+normalized with log1p CP10K; normalized inputs must provide aligned counts.
+Ambiguous floating-point matrices are rejected unless explicitly declared as
+counts. The output records whether normalization was computed or inherited.
 
 The integration H5AD is an intermediate standard input for status estimation
 and the final validation stage; it is not the primary workflow deliverable.
 
 ### 5. Perturbation Status Estimation
 
-Mixscape and PS are parallel choices. Specify one method to run estimation:
-
-```yaml
-perturbation_status:
-  method: mixscape                  # mixscape | ps
-  perturbation_type: CRISPRi        # required by Mixscape: KO | CRISPRa | CRISPRi
-  feature_mode: auto
-  shards: 4
-  max_workers: 1
-  memory_gb: 64
-```
-
-Perturbation Status Estimation remains part of the workflow structure in every
-branch. Mixscape or PS performs model-based estimation; the default
+Mixscape and PS are alternative status-estimation methods. The default
 `method: none` skips model computation while preserving the same status columns
-in the final H5AD.
+in the final H5AD. Mixscape additionally requires `perturbation_type` to be
+`KO`, `CRISPRa`, or `CRISPRi`.
 
 Mixscape and PS operate on `single_guide` and `concordant_construct` cells and
 retain the eligible non-targeting control pool. `mixed_construct` cells remain
 in the AnnData but are not status-eligible.
 
-With `feature_mode: auto`, ordinary gene-level features are preserved. A
-complete, ordered S/U/A layout is strictly detected and converted to gene-level
-S+A counts for the status method only; U is excluded. Malformed USA-like input
-terminates with an error. The integration and final H5AD matrices are unchanged.
+Status estimation does not alter the integration or final expression matrices.
 
 ### 6. Data Standardization and Validation
 
@@ -285,15 +239,9 @@ metadata, and output readability, then writes:
 {out_dir}/final/perturbation_adata.h5ad
 ```
 
-It does not recompute normalization, rescale values, filter cells, filter genes,
-or alter cell and feature order. `.X` and `layers["counts"]` are verified after
-writing. Validation summaries and failures are written to:
-
-```text
-{log_dir}/finalization/finalization.log
-```
-
-No separate QC report is produced.
+It does not recompute normalization, filter observations or variables, or alter
+their order. `.X` and `layers["counts"]` are verified after writing; validation
+details are written to `{log_dir}/finalization/finalization.log`.
 
 ## Final AnnData contract
 
@@ -306,17 +254,6 @@ No separate QC report is produced.
 | `.obsm["guide_candidates"]` | Sparse matrix of all valid guide candidates and canonical scores |
 | `.obsm["construct_candidates"]` | Construct-level candidate scores when a construct library is available |
 | `.uns` | Candidate labels, expression contract, and workflow provenance |
-
-Core assignment fields include:
-
-```text
-guide_id                     top_guide
-guide_count                  construct_count
-resolved_construct           assigned_construct_standard
-target_label                 perturbation_group
-is_ntc                       batch_id
-guide_assignment_missing     assignment_structure
-```
 
 The status interface is always present:
 
@@ -333,20 +270,10 @@ When `method: none`, method is `none`, score and label are missing, scorable is
 must have exactly one status record. Noneligible cells are retained with reason
 `not_eligible`.
 
-If a selected status method has no runnable perturbed target, the stage completes
-without a model fit, writes unscorable status records with an explicit reason,
-and records the skip in its log and manifest. Large method work directories are
-removed after a successful run; set `perturbation_status.keep_work: true` to
-retain them for debugging.
+Detailed metadata fields and method-specific behavior are documented in
+[Workflow details](docs/workflow-details.md).
 
 ## Running selected stages
-
-Run the complete configured workflow:
-
-```bash
-snakemake --use-conda --conda-frontend conda \
-  --configfile config/config.yaml --cores 48
-```
 
 Stop after guide extraction and merge:
 
@@ -360,15 +287,6 @@ Stop after perturbation integration:
 ```bash
 snakemake --use-conda --conda-frontend conda --cores 8 \
   /path/to/results/integration/perturbation_adata.h5ad
-```
-
-Common options:
-
-```text
---dry-run (-n)      Preview the execution plan
---rerun-incomplete  Re-run incomplete jobs
---unlock            Remove a stale lock after an interrupted run
---latency-wait 60   Allow for filesystem latency
 ```
 
 ## Output structure

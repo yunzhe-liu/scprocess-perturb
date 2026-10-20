@@ -84,6 +84,7 @@ class ProvenanceTests(unittest.TestCase):
             document = yaml.safe_load(output.read_text(encoding="utf-8"))
             self.assertEqual(document["schema_version"], "1.0")
             self.assertEqual(document["workflow"]["status"], "success")
+            self.assertEqual(document["workflow"]["version"], "1.0.0")
             self.assertEqual(document["workflow"]["engine_version"], "7.32.4")
             self.assertEqual(document["parameters"]["assignment"]["methods"], ["pgmm_em"])
             self.assertEqual(document["matrix_and_annotations"]["shape"], [2, 2])

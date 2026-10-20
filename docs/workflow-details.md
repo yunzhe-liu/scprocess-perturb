@@ -13,6 +13,7 @@ simpleaf:
   index:
     kmer_length: 15
     minimizer_length: 11
+    dictionary: sshash
   quant:
     resolution: parsimony-gene
     use_knee: false
@@ -217,6 +218,9 @@ user-facing workflow stage is Data Standardization and Validation.
 | `envs/finalization.yaml` | Data Standardization and Validation |
 
 With `--use-conda`, Snakemake creates rule-specific environments as needed.
+All five environment files are version-resolved for the v1.0.0 linux-64
+release. Mixscape and PS additionally install their non-Conda R packages from
+immutable Git commits through the adjacent post-deploy scripts.
 
 ## Rule sequence
 
